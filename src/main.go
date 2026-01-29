@@ -8,8 +8,8 @@ import (
 	debugshell "github.com/Anslen/Bfck/debugShell"
 )
 
-const MAIN_DEBUG = true
-const MAIN_DEBUG_FILE_PATH = "C:/Codes/go/Bfck/bfSrc/print.bf"
+const MAIN_DEBUG = false
+const MAIN_DEBUG_FILE_PATH = "C:/Codes/go/Bfck/bfSrc/test.bf"
 
 const HELP_STRING string = "run <file_path>   : Run specified code file without debug\n" +
 	"debug <file_path> : Open debug shell with specified code file\n" +

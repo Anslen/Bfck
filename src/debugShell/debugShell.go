@@ -13,9 +13,10 @@ import (
 const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
 	"s[tep]:				  : Step to next operator \n" +
+	"w[atch] <offset>         : Watch memory byte at current pointer plus offset\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
 	"d[elete] <line>          : Delete breakpoint at specified line\n" +
-	"i[nfo]                   : Information of all breakpoints\n" +
+	"i[nfo]                   : Information of breakpoints and watching\n" +
 	"clear                    : Clear all breakpoints\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
 	"n[ext]                   : Show next operator to be executed\n" +
@@ -24,6 +25,7 @@ const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"q[uit]                   : Quit debug shell\n" +
 	"\n"
 
+var REG_WATCH *regexp.Regexp = regexp.MustCompile(`^w(atch)? (-?\d+)$`)
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
 var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^d(elete)? (\d+)$`)
 var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`)
@@ -42,30 +44,29 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			continue
 		}
 
-		var commandValid bool = false
-
 		switch command {
 		case "r", "run":
-			commandValid = true
-
 			// Run code from beginning and get return code
 			var ret coderunner.ReturnCode = codeRunner.Run()
 			switch ret {
 			case coderunner.ReturnBreakPoint:
-				fmt.Print("\n\nHit breakpoint\n")
+				fmt.Print("\n\nHit breakpoint\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnWatch:
+				fmt.Print("\n\nWatch hit\n\n")
 				CodeRunning = true
 
 			case coderunner.ReturnFinish:
-				fmt.Print("\n\n")
+				fmt.Print("\n\nRunning finished\n\n")
 				CodeRunning = false
 
 			default:
 				panic("DebugShell: Unknown return code")
 			}
+			continue
 
 		case "c", "continue":
-			commandValid = true
-
 			// Check if code is running
 			if !CodeRunning {
 				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
@@ -79,18 +80,21 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				fmt.Print("\n\nHit breakpoint\n\n")
 				CodeRunning = true
 
+			case coderunner.ReturnWatch:
+				fmt.Print("\n\nWatch hit\n\n")
+				CodeRunning = true
+
 			case coderunner.ReturnFinish:
-				fmt.Print("\n")
+				fmt.Print("\n\nRunning finished\n\n")
 				CodeRunning = false
 
 			default:
 				panic("DebugShell: Unknown return code")
 			}
 			fmt.Print("\n")
+			continue
 
 		case "s", "step":
-			commandValid = true
-
 			var ret coderunner.ReturnCode = codeRunner.Step()
 			fmt.Print("\n")
 
@@ -100,37 +104,43 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			} else {
 				CodeRunning = true
 			}
+			continue
 
 		case "i", "info":
-			codeRunner.PrintBreakPoint()
-			commandValid = true
+			codeRunner.PrintDebugInfo()
+			continue
 
 		case "clear":
 			codeRunner.ClearBreakPoints()
-			commandValid = true
+			continue
 
 		case "n", "next":
-			commandValid = true
-
 			codeRunner.PrintNextOperator()
 			fmt.Print("\n") // Extra newline for better readability
+			continue
 
 		case "code":
 			codeRunner.PrintAllOperator()
-			commandValid = true
+			continue
 
 		case "h", "help":
 			fmt.Print(HELP_STRING)
-			commandValid = true
+			continue
 
 		case "q", "quit":
 			return
 		}
 
+		if matches := REG_WATCH.FindStringSubmatch(command); matches != nil {
+			// regex match watch command
+			var offset int
+			fmt.Sscanf(matches[2], "%d", &offset)
+			codeRunner.Watch(offset)
+			continue
+		}
+
 		if matches := REG_BREAK.FindStringSubmatch(command); matches != nil {
 			// regex match break command
-			commandValid = true
-
 			var line uint64
 			fmt.Sscanf(matches[2], "%d", &line)
 			err := codeRunner.AddBreakPoint(line)
@@ -138,10 +148,11 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			if err != nil {
 				fmt.Printf("%s\n\n", err.Error())
 			}
-		} else if matches := REG_DELETE.FindStringSubmatch(command); matches != nil {
-			// regex match delete command
-			commandValid = true
+			continue
+		}
 
+		if matches := REG_DELETE.FindStringSubmatch(command); matches != nil {
+			// regex match delete command
 			var index int
 			fmt.Sscanf(matches[2], "%d", &index)
 
@@ -149,10 +160,11 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			if err != nil {
 				fmt.Printf("%s\n\n", err.Error())
 			}
-		} else if matches := REG_PEEK.FindStringSubmatch(command); matches != nil {
-			// regex match peek command
-			commandValid = true
+			continue
+		}
 
+		if matches := REG_PEEK.FindStringSubmatch(command); matches != nil {
+			// regex match peek command
 			var offset, length int
 			// Read offset
 			if matches[3] == "" {
@@ -168,15 +180,19 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 
 			var bytes []byte = codeRunner.PeekBytes(offset, length)
-			for _, each := range bytes {
-				fmt.Printf("%d ", each)
+			// Print bytes
+			for index, each := range bytes {
+				if offset+index == 0 {
+					fmt.Printf("[%d] ", each)
+				} else {
+					fmt.Printf("%d ", each)
+				}
 			}
-			fmt.Print("\n")
+			fmt.Print("\n\n")
+			continue
 		}
 
-		// if no match command, print help
-		if !commandValid {
-			fmt.Print("Unknown command. Type h for help\n\n")
-		}
+		// No match command, print help
+		fmt.Print("Unknown command. Type h for help\n\n")
 	}
 }
