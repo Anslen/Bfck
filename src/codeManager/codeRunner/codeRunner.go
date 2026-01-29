@@ -13,6 +13,7 @@ type ReturnCode byte
 const (
 	ReturnFinish = iota
 	ReturnBreakPoint
+	ReturnStep // Step running finish
 )
 
 type CodeRunner struct {
@@ -33,7 +34,7 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 		ret = &CodeRunner{
 			code:            code,
 			codeIndex:       0,
-			memory:          nil,
+			memory:          memory.New(),
 			debugFlag:       true,
 			breakPoint:      make([]uint64, 0),
 			breakPointIndex: -1,
@@ -42,7 +43,7 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 		ret = &CodeRunner{
 			code:            code,
 			codeIndex:       0,
-			memory:          nil,
+			memory:          memory.New(),
 			debugFlag:       false,
 			breakPoint:      nil,
 			breakPointIndex: -1,
@@ -167,28 +168,22 @@ func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 }
 
 // Run starts running the code from the beginning.
+//
+// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Run() (ret ReturnCode, line uint64) {
-	// Reset code index and memory
-	cr.codeIndex = 0
-	if cr.debugFlag && len(cr.breakPoint) > 0 {
-		cr.breakPointIndex = 0
-	}
-	cr.memory = memory.New()
-
-	// Call continue and return its result
+	cr.Reset()
 	ret, line = cr.Continue()
 	return
 }
 
 // Continue continues running the code from the current position.
 //
-// Return ReturnCode and current line number (1-based).
+// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Continue() (ret ReturnCode, line uint64) {
 	for cr.codeIndex < cr.code.CodeCount {
 		// Check for breakpoint
 		if cr.debugFlag && cr.breakPointIndex != -1 && (cr.codeIndex == cr.code.LineBegins[cr.breakPoint[cr.breakPointIndex]-1]) {
 			// Hit breakpoint
-			ret = ReturnBreakPoint
 			line = cr.breakPoint[cr.breakPointIndex]
 
 			// Goto next breakpoint
@@ -196,46 +191,93 @@ func (cr *CodeRunner) Continue() (ret ReturnCode, line uint64) {
 			if cr.breakPointIndex >= len(cr.breakPoint) {
 				cr.breakPointIndex = -1
 			}
-			return
+			return ReturnBreakPoint, line
 		}
 
 		// Execute operator
-		var operator code.Operator = cr.code.Operators[cr.codeIndex]
-		var auxiliary uint64 = cr.code.Auxiliary[cr.codeIndex]
-		cr.codeIndex++
-		switch operator {
-		case code.OpAdd:
-			cr.memory.Add(auxiliary)
+		cr.executeOperator()
+	}
 
-		case code.OpSub:
-			cr.memory.Sub(auxiliary)
+	cr.Reset()
+	return ReturnFinish, 0
+}
 
-		case code.OpMoveLeft:
-			// Memory block may change after moving pointer
-			cr.memory = cr.memory.MovePtr(-int(auxiliary))
+// Step executes the next operator, ignore breakpoints.
+//
+// Return ReturnCode and current line number (1-based), line will be not setted
+func (cr *CodeRunner) Step() (ret ReturnCode, line uint64) {
+	// Check if code has finished
+	if cr.codeIndex >= cr.code.CodeCount {
+		return ReturnFinish, 0
+	}
 
-		case code.OpMoveRight:
-			// Memory block may change after moving pointer
-			cr.memory = cr.memory.MovePtr(int(auxiliary))
-
-		case code.OpLeftBracket:
-			if cr.memory.Peek(0) == 0 {
-				cr.codeIndex = int(auxiliary)
-			}
-
-		case code.OpRightBracket:
-			if cr.memory.Peek(0) != 0 {
-				cr.codeIndex = int(auxiliary)
-			}
-
-		case code.OpInput:
-			var input rune
-			fmt.Scanf("%c", &input)
-			cr.memory.Poke(byte(input))
-
-		case code.OpOutput:
-			fmt.Printf("%c", cr.memory.Peek(0))
+	// Check for breakpoint
+	if cr.debugFlag && cr.breakPointIndex != -1 && (cr.codeIndex == cr.code.LineBegins[cr.breakPoint[cr.breakPointIndex]-1]) {
+		// If breakpoint hit, just return breakpoint without executing
+		cr.breakPointIndex++
+		if cr.breakPointIndex >= len(cr.breakPoint) {
+			cr.breakPointIndex = -1
 		}
 	}
-	return ReturnFinish, 0
+
+	cr.executeOperator()
+
+	// Check code finish
+	if cr.codeIndex >= cr.code.CodeCount {
+		cr.Reset()
+		return ReturnFinish, 0
+	} else {
+		return ReturnStep, 0
+	}
+}
+
+// Reset resets the code runner to its initial state.
+func (cr *CodeRunner) Reset() {
+	// Reset code index and memory
+	cr.codeIndex = 0
+	if cr.debugFlag && len(cr.breakPoint) > 0 {
+		cr.breakPointIndex = 0
+	}
+	cr.memory = memory.New()
+}
+
+// executeOperator executes the current operator and advances the code index.
+func (cr *CodeRunner) executeOperator() {
+	var operator code.Operator = cr.code.Operators[cr.codeIndex]
+	var auxiliary uint64 = cr.code.Auxiliary[cr.codeIndex]
+	cr.codeIndex++
+
+	switch operator {
+	case code.OpAdd:
+		cr.memory.Add(auxiliary)
+
+	case code.OpSub:
+		cr.memory.Sub(auxiliary)
+
+	case code.OpMoveLeft:
+		// Memory block may change after moving pointer
+		cr.memory = cr.memory.MovePtr(-int(auxiliary))
+
+	case code.OpMoveRight:
+		// Memory block may change after moving pointer
+		cr.memory = cr.memory.MovePtr(int(auxiliary))
+
+	case code.OpLeftBracket:
+		if cr.memory.Peek(0) == 0 {
+			cr.codeIndex = int(auxiliary)
+		}
+
+	case code.OpRightBracket:
+		if cr.memory.Peek(0) != 0 {
+			cr.codeIndex = int(auxiliary)
+		}
+
+	case code.OpInput:
+		var input rune
+		fmt.Scanf("%c", &input)
+		cr.memory.Poke(byte(input))
+
+	case code.OpOutput:
+		fmt.Printf("%c", cr.memory.Peek(0))
+	}
 }

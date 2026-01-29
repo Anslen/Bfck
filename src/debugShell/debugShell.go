@@ -12,6 +12,7 @@ import (
 
 const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
+	"s[tep]:				  : Step to next operator \n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
 	"d[elete] <line>          : Delete breakpoint at specified line\n" +
 	"i[nfo]                   : Information of all breakpoints\n" +
@@ -94,6 +95,23 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 			fmt.Print("\n")
 
+		case "s", "step":
+			commandValid = true
+
+			// Check if code is running
+			if !CodeRunning {
+				codeRunner.Reset()
+			}
+			ret, _ := codeRunner.Step()
+			fmt.Print("\n")
+
+			// Check return code
+			if ret == coderunner.ReturnFinish {
+				CodeRunning = false
+			} else {
+				CodeRunning = true
+			}
+
 		case "i", "info":
 			codeRunner.PrintBreakPoint()
 			commandValid = true
@@ -104,10 +122,7 @@ func Start(codeRunner *coderunner.CodeRunner) {
 
 		case "n", "next":
 			commandValid = true
-			if !CodeRunning {
-				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
-				continue
-			}
+
 			codeRunner.PrintNextOperator()
 			fmt.Print("\n") // Extra newline for better readability
 
@@ -148,11 +163,6 @@ func Start(codeRunner *coderunner.CodeRunner) {
 		} else if matches := REG_PEEK.FindStringSubmatch(command); matches != nil {
 			// regex match peek command
 			commandValid = true
-
-			if !CodeRunning {
-				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
-				continue
-			}
 
 			var offset, length int
 			// Read offset
