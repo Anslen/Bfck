@@ -45,8 +45,8 @@ func New(debugFlag bool) (ret *Code) {
 	return
 }
 
-// Print prints the code with auxiliary data and line begins (if any).
-func (c *Code) Print() {
+// PrintAll prints all code with auxiliary data and line begins (if any).
+func (c *Code) PrintAll() {
 	fmt.Printf("\nTotal operators count: %v\n\n", c.CodeCount)
 
 	fmt.Println("Code with auxiliary:")
@@ -62,6 +62,15 @@ func (c *Code) Print() {
 			fmt.Printf("%d\t%d\n", index+1, line)
 		}
 	}
+}
+
+// Print prints the operator and auxiliary data at the given index.
+func (c Code) Print(index int) {
+	if index < 0 || index >= c.CodeCount {
+		panic("Code: code index out of range")
+	}
+
+	fmt.Printf("%-4d %-10s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
 }
 
 func (op Operator) String() string {

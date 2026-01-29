@@ -8,6 +8,13 @@ import (
 	"github.com/Anslen/Bfck/memory"
 )
 
+type ReturnCode byte
+
+const (
+	ReturnFinish = iota
+	ReturnBreakPoint
+)
+
 type CodeRunner struct {
 	code            *code.Code
 	codeIndex       int // Point at next operator to execute
@@ -138,32 +145,53 @@ func (cr *CodeRunner) PrintBreakPoint() {
 	fmt.Print("\n")
 }
 
-// PrintCode prints the code with auxiliary data and line begins (if any).
-func (cr *CodeRunner) PrintCode() {
-	cr.code.Print()
+// PrintCode prints analysed code information.
+func (cr *CodeRunner) PrintAllOperator() {
+	cr.code.PrintAll()
+}
+
+// PrintNextOperator prints the next operator to be executed.
+func (cr *CodeRunner) PrintNextOperator() {
+	if cr.codeIndex < 0 || cr.codeIndex >= cr.code.CodeCount {
+		panic("CodeRunner: code index out of range")
+	}
+
+	cr.code.Print(cr.codeIndex)
 }
 
 // PeekBytes peeks bytes from memory with the given offset and length.
+//
+// Offset is relative to the current memory pointer.
 func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 	return cr.memory.PeekBytes(offset, length)
 }
 
 // Run starts running the code from the beginning.
-func (cr *CodeRunner) Run() {
+func (cr *CodeRunner) Run() (ret ReturnCode, line uint64) {
+	// Reset code index and memory
 	cr.codeIndex = 0
 	if cr.debugFlag && len(cr.breakPoint) > 0 {
 		cr.breakPointIndex = 0
 	}
 	cr.memory = memory.New()
-	cr.Continue()
+
+	// Call continue and return its result
+	ret, line = cr.Continue()
+	return
 }
 
 // Continue continues running the code from the current position.
-func (cr *CodeRunner) Continue() {
+//
+// Return ReturnCode and current line number (1-based).
+func (cr *CodeRunner) Continue() (ret ReturnCode, line uint64) {
 	for cr.codeIndex < cr.code.CodeCount {
 		// Check for breakpoint
 		if cr.debugFlag && cr.breakPointIndex != -1 && (cr.codeIndex == cr.code.LineBegins[cr.breakPoint[cr.breakPointIndex]-1]) {
 			// Hit breakpoint
+			ret = ReturnBreakPoint
+			line = cr.breakPoint[cr.breakPointIndex]
+
+			// Goto next breakpoint
 			cr.breakPointIndex++
 			if cr.breakPointIndex >= len(cr.breakPoint) {
 				cr.breakPointIndex = -1
@@ -209,4 +237,5 @@ func (cr *CodeRunner) Continue() {
 			fmt.Printf("%c", cr.memory.Peek(0))
 		}
 	}
+	return ReturnFinish, 0
 }

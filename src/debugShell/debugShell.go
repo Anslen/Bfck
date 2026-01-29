@@ -15,6 +15,7 @@ const HELP_STRING string = "r[un]           : Run code from begin\n" +
 	"b[reak] <line>  : Set breakpoint at specified line\n" +
 	"d[elete] <line> : Delete breakpoint at specified line\n" +
 	"l[ist]          : List all breakpoints\n" +
+	"n[ext]          : Show next operator to be executed\n" +
 	"s[ee]           : See analysed code information\n" +
 	"h[elp]          : Show this help message\n" +
 	"q[uit]          : Quit debug shell\n" +
@@ -26,6 +27,7 @@ var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`
 
 // Start starts the debug shell for the given code runner.
 func Start(codeRunner *coderunner.CodeRunner) {
+	var CodeRunning bool = false
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("(Bfck) ")
@@ -41,21 +43,70 @@ func Start(codeRunner *coderunner.CodeRunner) {
 
 		switch command {
 		case "r", "run":
-			codeRunner.Run()
-			fmt.Print("\n")
 			commandValid = true
 
+			// Run code from beginning and get return code
+			var (
+				ret  coderunner.ReturnCode
+				line uint64
+			)
+			ret, line = codeRunner.Run()
+			switch ret {
+			case coderunner.ReturnBreakPoint:
+				fmt.Printf("\n\nHit breakpoint at line %d\n", line)
+				CodeRunning = true
+
+			case coderunner.ReturnFinish:
+				fmt.Print("\n")
+				CodeRunning = false
+
+			default:
+				panic("DebugShell: Unknown return code")
+			}
+
 		case "c", "continue":
-			codeRunner.Continue()
-			fmt.Print("\n")
 			commandValid = true
+
+			// Check if code is running
+			if !CodeRunning {
+				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+				continue
+			}
+
+			// Continue running code
+			var (
+				ret  coderunner.ReturnCode
+				line uint64
+			)
+			ret, line = codeRunner.Continue()
+			switch ret {
+			case coderunner.ReturnBreakPoint:
+				fmt.Printf("\n\nHit breakpoint at line %d\n", line)
+				CodeRunning = true
+			case coderunner.ReturnFinish:
+				fmt.Print("\n")
+				CodeRunning = false
+
+			default:
+				panic("DebugShell: Unknown return code")
+			}
+			fmt.Print("\n")
 
 		case "l", "list":
 			codeRunner.PrintBreakPoint()
 			commandValid = true
 
+		case "n", "next":
+			commandValid = true
+			if !CodeRunning {
+				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+				continue
+			}
+			codeRunner.PrintNextOperator()
+			fmt.Print("\n") // Extra newline for better readability
+
 		case "s", "see":
-			codeRunner.PrintCode()
+			codeRunner.PrintAllOperator()
 			commandValid = true
 
 		case "h", "help":
@@ -91,6 +142,11 @@ func Start(codeRunner *coderunner.CodeRunner) {
 		} else if matches := REG_PEEK.FindStringSubmatch(command); matches != nil {
 			// regex match peek command
 			commandValid = true
+
+			if !CodeRunning {
+				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+				continue
+			}
 
 			var offset, length int
 			// Read offset
