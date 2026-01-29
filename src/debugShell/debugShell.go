@@ -13,6 +13,7 @@ import (
 const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
 	"s[tep]:				  : Step to next operator \n" +
+	"u[ntil]                  : Run until loop([]) finish\n" +
 	"w[atch] <offset>         : Watch memory byte at current pointer plus offset\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
 	"d[elete] <line>          : Delete breakpoint at specified line\n" +
@@ -49,15 +50,19 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			// Run code from beginning and get return code
 			var ret coderunner.ReturnCode = codeRunner.Run()
 			switch ret {
-			case coderunner.ReturnBreakPoint:
+			case coderunner.ReturnReachBreakPoint:
 				fmt.Print("\n\nHit breakpoint\n\n")
 				CodeRunning = true
 
-			case coderunner.ReturnWatch:
+			case coderunner.ReturnReachWatch:
 				fmt.Print("\n\nWatch hit\n\n")
 				CodeRunning = true
 
-			case coderunner.ReturnFinish:
+			case coderunner.ReturnReachUntil:
+				fmt.Print("\n\nUntil finished\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnAfterFinish:
 				fmt.Print("\n\nRunning finished\n\n")
 				CodeRunning = false
 
@@ -76,15 +81,19 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			// Continue running code
 			var ret coderunner.ReturnCode = codeRunner.Continue()
 			switch ret {
-			case coderunner.ReturnBreakPoint:
+			case coderunner.ReturnReachBreakPoint:
 				fmt.Print("\n\nHit breakpoint\n\n")
 				CodeRunning = true
 
-			case coderunner.ReturnWatch:
+			case coderunner.ReturnReachWatch:
 				fmt.Print("\n\nWatch hit\n\n")
 				CodeRunning = true
 
-			case coderunner.ReturnFinish:
+			case coderunner.ReturnReachUntil:
+				fmt.Print("\n\nUntil finished\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnAfterFinish:
 				fmt.Print("\n\nRunning finished\n\n")
 				CodeRunning = false
 
@@ -99,10 +108,19 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			fmt.Print("\n")
 
 			// Check return code
-			if ret == coderunner.ReturnFinish {
+			if ret == coderunner.ReturnAfterFinish {
 				CodeRunning = false
 			} else {
 				CodeRunning = true
+			}
+			continue
+
+		case "u", "until":
+			// Check if code is running
+			if !CodeRunning {
+				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+			} else {
+				codeRunner.UntilLoopEnd()
 			}
 			continue
 

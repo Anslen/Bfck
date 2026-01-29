@@ -11,11 +11,12 @@ import (
 type ReturnCode byte
 
 const (
-	ReturnFinish = iota
-	ReturnBreakPoint
-	ReturnStep // Step running finish
-	ReturnWatch
-	returnExecuteOperator // For internal function executeOperator
+	ReturnAfterFinish = iota
+	ReturnAfterStep   // Step running finish
+	ReturnReachBreakPoint
+	ReturnReachWatch
+	ReturnReachUntil
+	returnAfterExecuteOperator // For internal function executeOperator
 )
 
 type CodeRunner struct {
@@ -28,6 +29,7 @@ type CodeRunner struct {
 	breakPointUsed   bool
 	isWatching       bool
 	watchOffset      int
+	untilStatus      bool
 }
 
 func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
@@ -38,26 +40,15 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 	if debugFlag {
 		ret = &CodeRunner{
 			code:             code,
-			codeIndex:        0,
 			memory:           memory.New(),
 			debugFlag:        true,
 			breakPoint:       make([]uint64, 0),
 			codeBreakPointed: make([]bool, code.CodeCount),
-			breakPointUsed:   false,
-			isWatching:       false,
-			watchOffset:      0,
 		}
 	} else {
 		ret = &CodeRunner{
-			code:             code,
-			codeIndex:        0,
-			memory:           memory.New(),
-			debugFlag:        false,
-			breakPoint:       nil,
-			codeBreakPointed: nil,
-			breakPointUsed:   false,
-			isWatching:       false,
-			watchOffset:      0,
+			code:   code,
+			memory: memory.New(),
 		}
 	}
 	return
@@ -190,10 +181,22 @@ func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 	return cr.memory.PeekBytes(offset, length)
 }
 
+// Watch sets a watch on the memory byte at the current pointer plus the given offset.
 func (cr *CodeRunner) Watch(offset int) {
 	cr.isWatching = true
 	cr.watchOffset = offset
 	fmt.Printf("Watch at offset %v\n\n", offset)
+}
+
+// UntilLoopEnd runs the code until the current loop (enclosed by []) ends.
+func (cr *CodeRunner) UntilLoopEnd() {
+	if cr.untilStatus {
+		fmt.Print("Already in until mode\n\n")
+		return
+	} else {
+		cr.untilStatus = true
+		fmt.Print("Entering until mode\n\n")
+	}
 }
 
 // Run starts running the code from the beginning.
@@ -201,7 +204,6 @@ func (cr *CodeRunner) Watch(offset int) {
 // Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Run() (ret ReturnCode) {
 	cr.codeIndex = 0
-	cr.memory = memory.New()
 	ret = cr.Continue()
 	return
 }
@@ -217,18 +219,17 @@ func (cr *CodeRunner) Continue() (ret ReturnCode) {
 		} else if cr.debugFlag && cr.codeBreakPointed[cr.codeIndex] {
 			// Hit breakpoint
 			cr.breakPointUsed = true
-			return ReturnBreakPoint
+			return ReturnReachBreakPoint
 		}
 
 		// Execute operator
-		if cr.executeOperator() == ReturnWatch {
-			return ReturnWatch
+		if ret := cr.executeOperator(); ret != returnAfterExecuteOperator {
+			return ret
 		}
 	}
 
-	cr.codeIndex = 0
-	cr.isWatching = false
-	return ReturnFinish
+	cr.reset()
+	return ReturnAfterFinish
 }
 
 // Step executes the next operator, ignore breakpoints.
@@ -244,11 +245,10 @@ func (cr *CodeRunner) Step() (ret ReturnCode) {
 
 	// Check code finish
 	if cr.codeIndex >= cr.code.CodeCount {
-		cr.codeIndex = 0
-		cr.isWatching = false
-		return ReturnFinish
+		cr.reset()
+		return ReturnAfterFinish
 	} else {
-		return ReturnStep
+		return ReturnAfterStep
 	}
 }
 
@@ -263,7 +263,7 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		if cr.isWatching && cr.watchOffset == 0 {
 			cr.isWatching = false
 			cr.codeIndex--
-			return ReturnWatch
+			return ReturnReachWatch
 		}
 		cr.memory.Add(auxiliary)
 
@@ -271,7 +271,7 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		if cr.isWatching && cr.watchOffset == 0 {
 			cr.isWatching = false
 			cr.codeIndex--
-			return ReturnWatch
+			return ReturnReachWatch
 		}
 		cr.memory.Sub(auxiliary)
 
@@ -293,6 +293,11 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	case code.OpRightBracket:
 		if cr.memory.Peek(0) != 0 {
 			cr.codeIndex = int(auxiliary)
+			// Check until mode
+			if cr.untilStatus {
+				cr.untilStatus = false
+				return ReturnReachUntil
+			}
 		}
 
 	case code.OpInput:
@@ -304,5 +309,12 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		fmt.Printf("%c", cr.memory.Peek(0))
 	}
 
-	return returnExecuteOperator
+	return returnAfterExecuteOperator
+}
+
+func (cr *CodeRunner) reset() {
+	cr.codeIndex = 0
+	cr.memory = memory.New()
+	cr.isWatching = false
+	cr.untilStatus = false
 }
