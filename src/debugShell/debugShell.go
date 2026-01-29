@@ -22,7 +22,7 @@ const HELP_STRING string = "r[un]           : Run code from begin\n" +
 
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
 var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^d(elete)? (\d+)$`)
-var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)? ((-?\d+) (\d+)?)?$`)
+var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`)
 
 // Start starts the debug shell for the given code runner.
 func Start(codeRunner *coderunner.CodeRunner) {
@@ -100,15 +100,15 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				fmt.Sscanf(matches[3], "%d", &offset)
 			}
 			// Read length
-			if matches[4] == "" {
+			if matches[5] == "" {
 				length = 1
 			} else {
-				fmt.Sscanf(matches[4], "%d", &length)
+				fmt.Sscanf(matches[5], "%d", &length)
 			}
 
 			var bytes []byte = codeRunner.PeekBytes(offset, length)
-			for each := range bytes {
-				fmt.Printf("%b ", each)
+			for _, each := range bytes {
+				fmt.Printf("%d ", each)
 			}
 			fmt.Print("\n")
 		}
