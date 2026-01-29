@@ -10,15 +10,17 @@ import (
 	coderunner "github.com/Anslen/Bfck/codeManager/codeRunner"
 )
 
-const HELP_STRING string = "r[un]           : Run code from begin\n" +
-	"c[ontinue]      : Continue running code until next breakpoint or end\n" +
-	"b[reak] <line>  : Set breakpoint at specified line\n" +
-	"d[elete] <line> : Delete breakpoint at specified line\n" +
-	"l[ist]          : List all breakpoints\n" +
-	"n[ext]          : Show next operator to be executed\n" +
-	"s[ee]           : See analysed code information\n" +
-	"h[elp]          : Show this help message\n" +
-	"q[uit]          : Quit debug shell\n" +
+const HELP_STRING string = "r[un]                    : Run code from begin\n" +
+	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
+	"b[reak] <line>           : Set breakpoint at specified line\n" +
+	"d[elete] <line>          : Delete breakpoint at specified line\n" +
+	"i[nfo]                   : Information of all breakpoints\n" +
+	"clear                    : Clear all breakpoints\n" +
+	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
+	"n[ext]                   : Show next operator to be executed\n" +
+	"code                     : Show analysed code information\n" +
+	"h[elp]                   : Show this help message\n" +
+	"q[uit]                   : Quit debug shell\n" +
 	"\n"
 
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
@@ -92,8 +94,12 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 			fmt.Print("\n")
 
-		case "l", "list":
+		case "i", "info":
 			codeRunner.PrintBreakPoint()
+			commandValid = true
+
+		case "clear":
+			codeRunner.ClearBreakPoints()
 			commandValid = true
 
 		case "n", "next":
@@ -105,7 +111,7 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			codeRunner.PrintNextOperator()
 			fmt.Print("\n") // Extra newline for better readability
 
-		case "s", "see":
+		case "code":
 			codeRunner.PrintAllOperator()
 			commandValid = true
 
