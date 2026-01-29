@@ -49,18 +49,14 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			commandValid = true
 
 			// Run code from beginning and get return code
-			var (
-				ret  coderunner.ReturnCode
-				line uint64
-			)
-			ret, line = codeRunner.Run()
+			var ret coderunner.ReturnCode = codeRunner.Run()
 			switch ret {
 			case coderunner.ReturnBreakPoint:
-				fmt.Printf("\n\nHit breakpoint at line %d\n", line)
+				fmt.Print("\n\nHit breakpoint\n")
 				CodeRunning = true
 
 			case coderunner.ReturnFinish:
-				fmt.Print("\n")
+				fmt.Print("\n\n")
 				CodeRunning = false
 
 			default:
@@ -77,15 +73,12 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 
 			// Continue running code
-			var (
-				ret  coderunner.ReturnCode
-				line uint64
-			)
-			ret, line = codeRunner.Continue()
+			var ret coderunner.ReturnCode = codeRunner.Continue()
 			switch ret {
 			case coderunner.ReturnBreakPoint:
-				fmt.Printf("\n\nHit breakpoint at line %d\n", line)
+				fmt.Print("\n\nHit breakpoint\n\n")
 				CodeRunning = true
+
 			case coderunner.ReturnFinish:
 				fmt.Print("\n")
 				CodeRunning = false
@@ -98,11 +91,7 @@ func Start(codeRunner *coderunner.CodeRunner) {
 		case "s", "step":
 			commandValid = true
 
-			// Check if code is running
-			if !CodeRunning {
-				codeRunner.Reset()
-			}
-			ret, _ := codeRunner.Step()
+			var ret coderunner.ReturnCode = codeRunner.Step()
 			fmt.Print("\n")
 
 			// Check return code
@@ -187,8 +176,7 @@ func Start(codeRunner *coderunner.CodeRunner) {
 
 		// if no match command, print help
 		if !commandValid {
-			fmt.Print("\nUnknown command.\n")
-			fmt.Print(HELP_STRING)
+			fmt.Print("Unknown command. Type h for help\n\n")
 		}
 	}
 }

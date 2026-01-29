@@ -9,7 +9,7 @@ import (
 )
 
 const MAIN_DEBUG = true
-const MAIN_DEBUG_FILE_PATH = "C:/Codes/go/Bfck/bfSrc/hello.bf"
+const MAIN_DEBUG_FILE_PATH = "C:/Codes/go/Bfck/bfSrc/print.bf"
 
 const HELP_STRING string = "run <file_path>   : Run specified code file without debug\n" +
 	"debug <file_path> : Open debug shell with specified code file\n" +

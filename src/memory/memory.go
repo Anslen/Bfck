@@ -19,23 +19,26 @@ func New() (ret *Memory) {
 
 // Peek returns the byte at the current pointer plus the given offset.
 func (m *Memory) Peek(offset int) (ret byte) {
-	if m.ptr+offset < 0 {
-		if m.prev == nil {
-			m.prev = New()
-			m.prev.next = m
+	var index int = m.ptr + offset
+	var current *Memory = m
+
+	for index < 0 {
+		if current.prev == nil {
+			return 0
 		}
-		return m.prev.Peek(m.ptr + offset + MemoryBlockSize)
+		index += MemoryBlockSize
+		current = current.prev
 	}
 
-	if m.ptr+offset >= MemoryBlockSize {
-		if m.next == nil {
-			m.next = New()
-			m.next.prev = m
+	for index >= MemoryBlockSize {
+		if current.next == nil {
+			return 0
 		}
-		return m.next.Peek(m.ptr + offset - MemoryBlockSize)
+		index -= MemoryBlockSize
+		current = current.next
 	}
 
-	return m.cells[m.ptr+offset]
+	return current.cells[index]
 }
 
 // PeekBytes returns a slice of bytes starting from the current pointer plus the given offset.

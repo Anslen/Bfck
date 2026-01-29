@@ -21,7 +21,9 @@ func New(lineCount uint64, columnIndex int, errorLine string) (ret *BracketNotCl
 		errorString: errorLine,
 	}
 	// add arrow to indicate the column
-	ret.errorString += "\n"
+	if errorLine[len(errorLine)-1] != '\n' {
+		ret.errorString += "\n"
+	}
 	for i := 0; i < columnIndex; i++ {
 		ret.errorString += " "
 	}

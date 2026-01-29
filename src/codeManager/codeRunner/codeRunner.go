@@ -17,12 +17,12 @@ const (
 )
 
 type CodeRunner struct {
-	code            *code.Code
-	codeIndex       int // Point at next operator to execute
-	memory          *memory.Memory
-	debugFlag       bool
-	breakPoint      []uint64
-	breakPointIndex int // Point at next breakpoint to hit
+	code             *code.Code
+	codeIndex        int // Point at next operator to execute
+	memory           *memory.Memory
+	debugFlag        bool
+	breakPoint       []uint64
+	codeBreakPointed []bool
 }
 
 func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
@@ -32,21 +32,21 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 
 	if debugFlag {
 		ret = &CodeRunner{
-			code:            code,
-			codeIndex:       0,
-			memory:          memory.New(),
-			debugFlag:       true,
-			breakPoint:      make([]uint64, 0),
-			breakPointIndex: -1,
+			code:             code,
+			codeIndex:        0,
+			memory:           memory.New(),
+			debugFlag:        true,
+			breakPoint:       make([]uint64, 0),
+			codeBreakPointed: make([]bool, code.CodeCount),
 		}
 	} else {
 		ret = &CodeRunner{
-			code:            code,
-			codeIndex:       0,
-			memory:          memory.New(),
-			debugFlag:       false,
-			breakPoint:      nil,
-			breakPointIndex: -1,
+			code:             code,
+			codeIndex:        0,
+			memory:           memory.New(),
+			debugFlag:        false,
+			breakPoint:       nil,
+			codeBreakPointed: nil,
 		}
 	}
 	return
@@ -67,21 +67,19 @@ func (cr *CodeRunner) AddBreakPoint(line uint64) (err error) {
 	// Find position and add breakpoint
 	position, found := slices.BinarySearch(cr.breakPoint, line)
 	if !found {
-		// Update breakPointIndex
-		if cr.breakPointIndex == -1 || line < cr.breakPoint[cr.breakPointIndex] {
-			cr.breakPointIndex++
-		}
-		cr.breakPoint = slices.Insert(cr.breakPoint, position, line)
-
-		// Pirnt add success information
-		fmt.Printf("Breakpoint added at line %v\n\n", line)
-
 		// Warn if breakpoint at empty line
 		if cr.code.LineBegins[line-1] == -1 {
 			fmt.Printf("Warning: breakpoint at line %v will not work\n\n", line)
+			return
 		}
+
+		cr.codeBreakPointed[cr.code.LineBegins[line-1]] = true
+		cr.breakPoint = slices.Insert(cr.breakPoint, position, line)
+		// Pirnt add success information
+		fmt.Printf("Breakpoint added at line %v\n\n", line)
+
 	} else {
-		err = fmt.Errorf("Error: breakpoint at line %v already exists", line)
+		err = fmt.Errorf("Warning: Breakpoint at line %v already existed\n\n", line)
 	}
 
 	return
@@ -101,18 +99,24 @@ func (cr *CodeRunner) RemoveBreakPoint(index int) (err error) {
 		return
 	}
 
+	var removedLine uint64 = cr.breakPoint[index-1]
+	var removedCodeIndex int = cr.code.LineBegins[removedLine-1]
 	cr.breakPoint = slices.Delete(cr.breakPoint, index-1, index)
-	// Update breakPointIndex
-	if index-1 < cr.breakPointIndex {
-		cr.breakPointIndex--
-	}
-	if cr.breakPointIndex >= len(cr.breakPoint) {
-		cr.breakPointIndex = -1
-	}
 
 	// Print remove success information
 	fmt.Printf("Breakpoint %v removed\n\n", index)
 
+	// Remove code breakpoint mark if nessesary
+	// Check last breakpoint
+	if index != 1 && cr.code.LineBegins[cr.breakPoint[index-2]-1] == removedCodeIndex {
+		return
+	}
+	// Check next breakpoint
+	if index != len(cr.breakPoint)+1 && cr.code.LineBegins[cr.breakPoint[index-1]-1] == removedCodeIndex {
+		return
+	}
+
+	cr.codeBreakPointed[removedCodeIndex] = false
 	return
 }
 
@@ -122,7 +126,9 @@ func (cr *CodeRunner) ClearBreakPoints() {
 		panic("CodeRunner: can't clear breakpoints when not in debug mode")
 	}
 	cr.breakPoint = make([]uint64, 0)
-	cr.breakPointIndex = -1
+	for index := range cr.codeBreakPointed {
+		cr.codeBreakPointed[index] = false
+	}
 	fmt.Print("All breakpoints cleared\n\n")
 }
 
@@ -170,75 +176,50 @@ func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 // Run starts running the code from the beginning.
 //
 // Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
-func (cr *CodeRunner) Run() (ret ReturnCode, line uint64) {
-	cr.Reset()
-	ret, line = cr.Continue()
+func (cr *CodeRunner) Run() (ret ReturnCode) {
+	cr.codeIndex = 0
+	cr.memory = memory.New()
+	ret = cr.Continue()
 	return
 }
 
 // Continue continues running the code from the current position.
 //
 // Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
-func (cr *CodeRunner) Continue() (ret ReturnCode, line uint64) {
+func (cr *CodeRunner) Continue() (ret ReturnCode) {
 	for cr.codeIndex < cr.code.CodeCount {
 		// Check for breakpoint
-		if cr.debugFlag && cr.breakPointIndex != -1 && (cr.codeIndex == cr.code.LineBegins[cr.breakPoint[cr.breakPointIndex]-1]) {
+		if cr.debugFlag && cr.codeBreakPointed[cr.codeIndex] {
 			// Hit breakpoint
-			line = cr.breakPoint[cr.breakPointIndex]
-
-			// Goto next breakpoint
-			cr.breakPointIndex++
-			if cr.breakPointIndex >= len(cr.breakPoint) {
-				cr.breakPointIndex = -1
-			}
-			return ReturnBreakPoint, line
+			return ReturnBreakPoint
 		}
 
 		// Execute operator
 		cr.executeOperator()
 	}
 
-	cr.Reset()
-	return ReturnFinish, 0
+	cr.codeIndex = 0
+	return ReturnFinish
 }
 
 // Step executes the next operator, ignore breakpoints.
 //
 // Return ReturnCode and current line number (1-based), line will be not setted
-func (cr *CodeRunner) Step() (ret ReturnCode, line uint64) {
+func (cr *CodeRunner) Step() (ret ReturnCode) {
 	// Check if code has finished
 	if cr.codeIndex >= cr.code.CodeCount {
-		return ReturnFinish, 0
-	}
-
-	// Check for breakpoint
-	if cr.debugFlag && cr.breakPointIndex != -1 && (cr.codeIndex == cr.code.LineBegins[cr.breakPoint[cr.breakPointIndex]-1]) {
-		// If breakpoint hit, just return breakpoint without executing
-		cr.breakPointIndex++
-		if cr.breakPointIndex >= len(cr.breakPoint) {
-			cr.breakPointIndex = -1
-		}
+		panic("CodeRunner: code index out of range")
 	}
 
 	cr.executeOperator()
 
 	// Check code finish
 	if cr.codeIndex >= cr.code.CodeCount {
-		cr.Reset()
-		return ReturnFinish, 0
+		cr.codeIndex = 0
+		return ReturnFinish
 	} else {
-		return ReturnStep, 0
+		return ReturnStep
 	}
-}
-
-// Reset resets the code runner to its initial state.
-func (cr *CodeRunner) Reset() {
-	// Reset code index and memory
-	cr.codeIndex = 0
-	if cr.debugFlag && len(cr.breakPoint) > 0 {
-		cr.breakPointIndex = 0
-	}
-	cr.memory = memory.New()
 }
 
 // executeOperator executes the current operator and advances the code index.

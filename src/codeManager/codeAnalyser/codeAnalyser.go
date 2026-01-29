@@ -1,7 +1,6 @@
 package codeanalyser
 
 import (
-	"iter"
 	"strings"
 
 	"github.com/Anslen/Bfck/codeManager/bracketNotCloseError"
@@ -24,8 +23,7 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 	var lastOperator code.Operator = code.Invalid
 
 	// Lookup each character in codeText
-	var lines iter.Seq[string] = strings.Lines(codeText)
-	for line := range lines {
+	for line := range strings.Lines(codeText) {
 		lineCount++
 		if debugFlag {
 			ret.LineBegins = append(ret.LineBegins, len(ret.Operators))
@@ -133,7 +131,7 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 		var unclosedBracketCount int = len(bracketIndexStack)
 		lineCount = 0
 		// Find line and column of unclosed bracket
-		for line := range lines {
+		for line := range strings.Lines(codeText) {
 			lineCount++
 			for columnIndex, char := range line {
 				if char == '[' {

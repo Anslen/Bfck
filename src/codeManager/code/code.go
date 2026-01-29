@@ -51,7 +51,7 @@ func (c *Code) PrintAll() {
 
 	fmt.Println("Code with auxiliary:")
 	for index := 0; index < c.CodeCount; index++ {
-		fmt.Printf("%-4d %-10s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
+		fmt.Printf("%-8d %-15s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
 	}
 
 	fmt.Printf("\nLines count: %v\n\n", c.LineCount)
@@ -70,7 +70,7 @@ func (c Code) Print(index int) {
 		panic("Code: code index out of range")
 	}
 
-	fmt.Printf("%-4d %-10s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
+	fmt.Printf("%-8d %-15s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
 }
 
 func (op Operator) String() string {
