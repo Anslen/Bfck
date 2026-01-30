@@ -184,11 +184,11 @@ func (cr *CodeRunner) PrintAllOperator() {
 
 // PrintNextOperator prints the next operator to be executed.
 func (cr *CodeRunner) PrintNextOperator() {
-	if cr.codeIndex < 0 || cr.codeIndex >= cr.code.CodeCount {
-		panic("CodeRunner: code index out of range")
+	if cr.codeIndex >= cr.code.CodeCount {
+		cr.code.Print(0)
+	} else {
+		cr.code.Print(cr.codeIndex)
 	}
-
-	cr.code.Print(cr.codeIndex)
 }
 
 // PeekBytes peeks bytes from memory with the given offset and length.
@@ -218,7 +218,7 @@ func (cr *CodeRunner) UntilLoopEnd() {
 
 // Run starts running the code from the beginning.
 func (cr *CodeRunner) Run() (ret ReturnCode) {
-	cr.codeIndex = 0
+	cr.Reset()
 	ret = cr.Continue()
 	return
 }
@@ -238,7 +238,7 @@ func (cr *CodeRunner) Continue() (ret ReturnCode) {
 		// Execute operator
 		if ret = cr.executeOperator(); ret != returnAfterExecuteOperator {
 			if ret == ReturnAfterFinish {
-				cr.reset()
+				cr.clearDebugFlags()
 			}
 			return ret
 		}
@@ -247,6 +247,11 @@ func (cr *CodeRunner) Continue() (ret ReturnCode) {
 
 // Step executes the next operator, ignore breakpoints.
 func (cr *CodeRunner) Step() (ret ReturnCode) {
+	// Check finish, reset if finished
+	if cr.codeIndex >= cr.code.CodeCount {
+		cr.Reset()
+	}
+
 	// Execute operator
 	ret = cr.executeOperator()
 
@@ -256,7 +261,7 @@ func (cr *CodeRunner) Step() (ret ReturnCode) {
 		ret = ReturnAfterStep
 
 	case ReturnAfterFinish:
-		cr.reset()
+		cr.clearDebugFlags()
 	}
 	return
 }
@@ -325,9 +330,14 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	}
 }
 
-func (cr *CodeRunner) reset() {
+// Reset resets the CodeRunner to the initial state.
+func (cr *CodeRunner) Reset() {
 	cr.codeIndex = 0
 	cr.memory = memory.New()
+}
+
+// clearDebugFlags clears all debug-related flags.
+func (cr *CodeRunner) clearDebugFlags() {
 	cr.isWatching = false
 	cr.untilStatus = false
 }

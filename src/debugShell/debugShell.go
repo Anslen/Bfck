@@ -40,6 +40,7 @@ const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
 	"t[ape]                   : Show tape around, equal to peek -10 20\n" +
 	"n[ext]                   : Show next operator to be executed\n" +
+	"reset                    : Reset memory tape immediately\n" +
 	"code                     : Show analysed code information\n" +
 	"h[elp]                   : Show this help message\n" +
 	"q[uit]                   : Quit debug shell\n" +
@@ -172,6 +173,11 @@ func Start(codeRunner *coderunner.CodeRunner) {
 		case "n", "next":
 			codeRunner.PrintNextOperator()
 			fmt.Print("\n") // Extra newline for better readability
+			continue
+
+		case "reset":
+			codeRunner.Reset()
+			fmt.Print("Memory tape reseted.\n\n")
 			continue
 
 		case "code":

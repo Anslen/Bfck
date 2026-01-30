@@ -33,6 +33,7 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 
 	// Return early if codeText is empty
 	if len(codeText) == 0 {
+		err = errors.New("Error: Code is empty")
 		return
 	}
 
@@ -219,7 +220,7 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 	if len(ret.Operators) == 0 {
 		// Code is empty after analysis
 		ret = nil
-		err = errors.New("Error: code is empty")
+		err = errors.New("Error: Code is empty")
 	}
 
 	return
