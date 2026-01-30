@@ -67,8 +67,26 @@ func (c *Code) PrintAll() {
 	fmt.Printf("\nTotal operators count: %v\n\n", c.CodeCount)
 
 	fmt.Println("Code with auxiliary:")
-	for index := 0; index < c.CodeCount; index++ {
-		fmt.Printf("%-8d %-15s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
+	var loopCount uint64 = 0
+	var loopCountStack []uint64 = make([]uint64, 0)
+
+	for index, operator := range c.Operators {
+		// Print loop labels
+		if operator == OpLeftBracket {
+			loopCount++
+			loopCountStack = append(loopCountStack, loopCount)
+			fmt.Printf("L%v:\n", loopCount)
+		}
+		fmt.Printf("  %-8d %-15s %d\n", index, operator.String(), c.Auxiliary[index])
+		// Print loop end labels
+		if operator == OpRightBracket {
+			if len(loopCountStack) == 0 {
+				panic("Code: unmatched right bracket when printing")
+			}
+			var lastLoopCount uint64 = loopCountStack[len(loopCountStack)-1]
+			fmt.Printf("L%v End\n", lastLoopCount)
+			loopCountStack = loopCountStack[:len(loopCountStack)-1]
+		}
 	}
 
 	fmt.Printf("\nLines count: %v\n\n", c.LineCount)
@@ -76,7 +94,7 @@ func (c *Code) PrintAll() {
 		fmt.Println("Line begins at:")
 		fmt.Println("Line\tbegin")
 		for index, line := range c.LineBegins {
-			fmt.Printf("%d\t%d\n", index+1, line)
+			fmt.Printf("  %d\t%d\n", index+1, line)
 		}
 	}
 }
