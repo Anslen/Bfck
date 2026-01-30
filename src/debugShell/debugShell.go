@@ -118,7 +118,7 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				CodeRunning = false
 
 			default:
-				panic("DebugShell: Unknown return code")
+				panic("DebugShell: Invalid return code")
 			}
 			continue
 
@@ -126,10 +126,25 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			var ret coderunner.ReturnCode = codeRunner.Step()
 
 			// Check return code
-			if ret == coderunner.ReturnAfterFinish {
-				CodeRunning = false
-			} else {
+			switch ret {
+			case coderunner.ReturnReachWatch:
+				fmt.Print("Watch hit\n\n")
 				CodeRunning = true
+
+			case coderunner.ReturnReachUntil:
+				fmt.Print("Until finished\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnAfterFinish:
+				fmt.Print("\n\nRunning finished\n\n")
+				CodeRunning = false
+
+			case coderunner.ReturnAfterStep:
+				fmt.Print("\n")
+				CodeRunning = true
+
+			default:
+				panic("DebugShell: Invalid return code")
 			}
 			continue
 

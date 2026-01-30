@@ -18,6 +18,8 @@
 package codeanalyser
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Anslen/Bfck/codeManager/bracketNotCloseError"
@@ -152,12 +154,17 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 				var leftBracketIndex uint64 = bracketIndexStack[len(bracketIndexStack)-1]
 				bracketIndexStack = bracketIndexStack[:len(bracketIndexStack)-1]
 
+				// Check empty loop and warn
+				if leftBracketIndex == uint64(len(ret.Operators))-1 {
+					fmt.Printf("Warning: Empty loop at line %v\n", lineCount)
+				}
+
 				// Set jump positions in Auxiliary data
 				pushOperator(ret, code.OpRightBracket)
-				ret.Auxiliary[len(ret.Auxiliary)-1] = leftBracketIndex
+				ret.Auxiliary[len(ret.Auxiliary)-1] = leftBracketIndex + 1
 
 				// Set jump position for left bracket
-				ret.Auxiliary[leftBracketIndex] = uint64(len(ret.Operators) - 1)
+				ret.Auxiliary[leftBracketIndex] = uint64(len(ret.Operators))
 
 				lastOperator = code.OpRightBracket
 				lineIsEmpty = false
@@ -207,6 +214,12 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 				}
 			}
 		}
+	}
+
+	if len(ret.Operators) == 0 {
+		// Code is empty after analysis
+		ret = nil
+		err = errors.New("Error: code is empty")
 	}
 
 	return

@@ -217,8 +217,6 @@ func (cr *CodeRunner) UntilLoopEnd() {
 }
 
 // Run starts running the code from the beginning.
-//
-// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Run() (ret ReturnCode) {
 	cr.codeIndex = 0
 	ret = cr.Continue()
@@ -226,10 +224,8 @@ func (cr *CodeRunner) Run() (ret ReturnCode) {
 }
 
 // Continue continues running the code from the current position.
-//
-// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Continue() (ret ReturnCode) {
-	for cr.codeIndex < cr.code.CodeCount {
+	for {
 		// Check for breakpoint
 		if cr.breakPointUsed {
 			cr.breakPointUsed = false
@@ -240,33 +236,29 @@ func (cr *CodeRunner) Continue() (ret ReturnCode) {
 		}
 
 		// Execute operator
-		if ret := cr.executeOperator(); ret != returnAfterExecuteOperator {
+		if ret = cr.executeOperator(); ret != returnAfterExecuteOperator {
+			if ret == ReturnAfterFinish {
+				cr.reset()
+			}
 			return ret
 		}
 	}
-
-	cr.reset()
-	return ReturnAfterFinish
 }
 
 // Step executes the next operator, ignore breakpoints.
-//
-// Return ReturnCode and current line number (1-based), line will be not setted
 func (cr *CodeRunner) Step() (ret ReturnCode) {
-	// Check if code has finished
-	if cr.codeIndex >= cr.code.CodeCount {
-		panic("CodeRunner: code index out of range")
-	}
+	// Execute operator
+	ret = cr.executeOperator()
 
-	cr.executeOperator()
+	// Check finish
+	switch ret {
+	case returnAfterExecuteOperator:
+		ret = ReturnAfterStep
 
-	// Check code finish
-	if cr.codeIndex >= cr.code.CodeCount {
+	case ReturnAfterFinish:
 		cr.reset()
-		return ReturnAfterFinish
-	} else {
-		return ReturnAfterStep
 	}
+	return
 }
 
 // executeOperator executes the current operator and advances the code index.
@@ -310,8 +302,8 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	case code.OpRightBracket:
 		if cr.memory.Peek(0) != 0 {
 			cr.codeIndex = int(auxiliary)
-			// Check until mode
-			if cr.untilStatus {
+			// Check until mode, if running has finished, ignore until
+			if cr.untilStatus && cr.codeIndex < cr.code.CodeCount {
 				cr.untilStatus = false
 				return ReturnReachUntil
 			}
@@ -326,7 +318,11 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		fmt.Printf("%c", cr.memory.Peek(0))
 	}
 
-	return returnAfterExecuteOperator
+	if cr.codeIndex >= cr.code.CodeCount {
+		return ReturnAfterFinish
+	} else {
+		return returnAfterExecuteOperator
+	}
 }
 
 func (cr *CodeRunner) reset() {
