@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2026 Anslen
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package main
 
 import (
@@ -8,12 +25,15 @@ import (
 	debugshell "github.com/Anslen/Bfck/debugShell"
 )
 
+// For IDE debug
 const MAIN_DEBUG = false
-const MAIN_DEBUG_FILE_PATH = "C:/Codes/go/Bfck/bfSrc/test.bf"
+const MAIN_DEBUG_FILE_PATH = ""
 
 const HELP_STRING string = "run <file_path>   : Run specified code file without debug\n" +
 	"debug <file_path> : Open debug shell with specified code file\n" +
 	"help              : Show this help message\n"
+
+const VERSION_STRING string = "Bfck version 0.0.1 - Copyright (C) 2026 Anslen"
 
 func main() {
 	if MAIN_DEBUG {
