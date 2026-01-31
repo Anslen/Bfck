@@ -128,7 +128,13 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			continue
 
 		case "t", "tape":
+			// Print memory pointer
+			var ptr int = codeRunner.GetMemoryPointer()
+			fmt.Printf("Current memory pointer: %d\n", ptr)
+
+			// Peek tape around
 			peekTape(codeRunner, -10, 20)
+
 			continue
 
 		case "u", "until":
