@@ -6,11 +6,11 @@
 
 ## Features
 
-*   **Interactive Debug Shell**: Built-in debugger to debug code without extra tools.
-*   **Breakpoint Management**: Support for setting and deleting breakpoints at specific line numbers.
+*   **Breakpoint Management**: Support for setting and managing breakpoints with gdb-like commands.
 *   **Memory Watch**: Real-time monitoring of specific memory cell changes.
-*   **Code Analysis**: Ability to parse and view assembly-level instructions with auxiliary info in debug mode.
+*   **Code Analysis**: Ability to parse and view assembly-level instructions with auxiliary info and loop labels in debug mode.
 *   **Execution Control**: Supports stepping (`step`), running until loop end (`until`), and continuing execution (`continue`).
+*   **Detailed Execution Visualization**: The `detailed` command visualizes each execution step, showing the current instruction and surrounding memory tape state.
 
 ## Quick Start
 
@@ -46,6 +46,93 @@ Enter debug mode:
 ./bfck debug <file_path>
 ```
 
+**Note**: In debug mode, memory state is preserved after execution finishes for convenience checking. It will be automatically reset when you start a new run. You can use `reset` command to manually reset memory. Debug configurations like `watch` list are persistent and will NOT be cleared by this automatic reset or the manual `reset` command but will be cleared after running finish.
+
+### Example
+
+Consider `example.bf`:
+```brainfuck
+++++
+>++
+[-]
+```
+
+Analysed code:
+```text
+$ ./bin/bfck debug example.bf
+(Bfck) code
+
+Total operators count: 6
+
+Code with auxiliary:
+  0        Add             4
+  1        MoveRight       1
+  2        Add             2
+L1:
+  3        LeftBracket     6
+  4        Sub             1
+  5        RightBracket    4
+L1 End
+
+Lines count: 3
+
+Line begins at:
+Line    begin
+  1     0
+  2     1
+  3     3
+```
+
+Debug with `detailed` command:
+```text
+(Bfck) d
+0        Add             4
+
+Memory pointer at: 0
+0 0 0 0 0 0 0 0 0 0 [4] 0 0 0 0 0 0 0 0 0
+
+1        MoveRight       1
+
+Memory pointer at: 0
+0 0 0 0 0 0 0 0 0 4 [0] 0 0 0 0 0 0 0 0 0
+
+2        Add             2
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [2] 0 0 0 0 0 0 0 0 0
+
+3        LeftBracket     6
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [2] 0 0 0 0 0 0 0 0 0
+
+4        Sub             1
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [1] 0 0 0 0 0 0 0 0 0
+
+5        RightBracket    4
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [1] 0 0 0 0 0 0 0 0 0
+
+4        Sub             1
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [0] 0 0 0 0 0 0 0 0 0
+
+5        RightBracket    4
+
+Memory pointer at: 1
+0 0 0 0 0 0 0 0 0 4 [0] 0 0 0 0 0 0 0 0 0
+
+
+
+Running finished
+```
+
+
+
 ## Debugging Commands
 
 After entering debug mode (seeing the `(Bfck)` prompt), use the following commands to control program execution. Characters in brackets `[]` indicate optional shorthand inputs.
@@ -55,21 +142,25 @@ After entering debug mode (seeing the `(Bfck)` prompt), use the following comman
 | `run`      | `r`   | None                | Run code from the beginning.                                                                     |
 | `continue` | `c`   | None                | Continue execution until the next breakpoint or program end.                                     |
 | `step`     | `s`   | None                | Execute the next instruction (single step).                                                      |
+| `detailed` | `d`   | `[times]`           | Execute detailed steps (default 1), showing the instruction and memory tape after each step.     |
 | `until`    | `u`   | None                | Run until the current loop `[]` finishes.                                                        |
+| `tape`     | `t`   | None                | Show memory tape around current pointer.                                                         |
+| `ptr`      | None  | None                | Show the current memory pointer address (Start is 0).                                            |
 | `break`    | `b`   | `<line>`            | Set a breakpoint at the specified line number. E.g., `b 10`.                                     |
-| `delete`   | `d`   | `<line>`            | Delete the breakpoint at the specified line number.                                              |
-| `watch`    | `w`   | `<offset>`          | Watch the memory value at the current pointer relative offset. E.g., `w 0` watches current cell. |
+| `delete`   | `del` | `b\|w <num>`        | Delete the breakpoint or watchpoint at the specified index. E.g., `del b 1`.                     |
+| `watch`    | `w`   | `<address>`         | Watch the memory at the specified absolute address. E.g., `w 0` watches the starting cell.       |
 | `peek`     | `p`   | `[offset [length]]` | Peek memory data. Defaults to current cell. E.g., `p 0 5` peeks 5 bytes starting from current.   |
-| `info`     | `i`   | None                | Show current breakpoints and watch list.                                                         |
+| `info`     | `i`   | `[b\|w]`            | Show current breakpoints (`b`) or watch list (`w`). Default shows both.                          |
 | `next`     | `n`   | None                | Show the next operator to be executed.                                                           |
+| `reset`    | None  | None                | Manually reset memory and execution state.                                                       |
 | `code`     | None  | None                | Show the full list of parsed code instructions.                                                  |
-| `clear`    | None  | None                | Clear all breakpoints.                                                                           |
+| `clear`    | None  | `[b\|w]`            | Clear breakpoints (`b`) or watchpoints (`w`). Default clears both.                               |
 | `help`     | `h`   | None                | Show help message.                                                                               |
 | `quit`     | `q`   | None                | Quit the debugger.                                                                               |
 
 ### Auxiliary Data
 
-When using the `code` command or viewing instructions, you may see an **Auxiliary** value associated with each operator. This is the result of the interpreter's optimization:
+When using the `code` command or viewing instructions, you will see an **Auxiliary** value associated with each operator. This is the result of the interpreter's optimization:
 
 *   **`+` / `-` (Add / Sub)**: The number of times to increment/decrement (e.g., `+++` becomes `Add 3`).
 *   **`>` / `<` (MoveRight / MoveLeft)**: The number of steps to move the pointer.
