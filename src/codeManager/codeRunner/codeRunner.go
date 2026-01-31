@@ -33,6 +33,7 @@ const (
 	ReturnReachBreakPoint
 	ReturnReachWatch
 	ReturnReachUntil
+	ReturnReachStop
 	returnAfterExecuteOperator // For internal function executeOperator
 )
 
@@ -50,6 +51,8 @@ type CodeRunner struct {
 	watchChecked     bool
 	watchHit         bool
 	untilStatus      bool
+	stopEnabled      bool
+	stopIndex        int
 }
 
 func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
@@ -230,6 +233,12 @@ func (cr *CodeRunner) PrintWatchInfo() {
 	}
 }
 
+// SetStopPoint sets the code runner to stop execution at the specified operator index.
+func (cr *CodeRunner) SetStopPoint(index int) {
+	cr.stopEnabled = true
+	cr.stopIndex = index
+}
+
 // PrintCode prints analysed code information.
 func (cr *CodeRunner) PrintAllOperator() {
 	cr.code.PrintAll()
@@ -313,10 +322,18 @@ func (cr *CodeRunner) Step() (ret ReturnCode) {
 
 // executeOperator executes the current operator and advances the code index.
 func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
+	// Check stop point
+	if cr.debugFlag && cr.stopEnabled && cr.codeIndex == cr.stopIndex {
+		cr.stopEnabled = false
+		return ReturnReachStop
+	}
+
+	// fetch operator and auxiliary data
 	var operator code.Operator = cr.code.Operators[cr.codeIndex]
 	var auxiliary uint64 = cr.code.Auxiliary[cr.codeIndex]
 	cr.codeIndex++
 
+	// Execute operator
 	switch operator {
 	case code.OpAdd:
 		// Check watchpoint

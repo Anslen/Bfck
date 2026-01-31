@@ -32,6 +32,7 @@ const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"s[tep] [times]           : Step by times, default 1\n" +
 	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
+	"stop <index>			  : Stop execution at specified operator index\n" +
 	"w[atch] <address>        : Watch memory at address\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
 	"del[ete] b|w <num>       : Delete breakpoint or watchpoint at specified number\n" +
@@ -49,6 +50,7 @@ const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 
 var REG_STEP *regexp.Regexp = regexp.MustCompile(`^s(tep)?( (\d+))?$`)
 var REG_DETAILED *regexp.Regexp = regexp.MustCompile(`^d(etailed)?( (\d+))?$`)
+var REG_STOP *regexp.Regexp = regexp.MustCompile(`^stop (\d+)$`)
 var REG_WATCH *regexp.Regexp = regexp.MustCompile(`^w(atch)? (-?\d+)$`)
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
 var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^del(ete)? (b|w) (\d+)$`)
@@ -87,6 +89,10 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				fmt.Print("\n\nUntil finished\n\n")
 				CodeRunning = true
 
+			case coderunner.ReturnReachStop:
+				fmt.Print("\n\nReach stop\n\n")
+				CodeRunning = true
+
 			case coderunner.ReturnAfterFinish:
 				fmt.Print("\n\nRunning finished\n\n")
 				CodeRunning = false
@@ -116,6 +122,10 @@ func Start(codeRunner *coderunner.CodeRunner) {
 
 			case coderunner.ReturnReachUntil:
 				fmt.Print("\n\nUntil finished\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnReachStop:
+				fmt.Print("\n\nReach stop\n\n")
 				CodeRunning = true
 
 			case coderunner.ReturnAfterFinish:
@@ -213,6 +223,16 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				}
 			}
 			fmt.Print("\n")
+			continue
+		}
+
+		if matches := REG_STOP.FindStringSubmatch(command); matches != nil {
+			// regex match stop command
+			var index int
+			fmt.Sscanf(matches[1], "%d", &index)
+
+			codeRunner.SetStopPoint(index)
+			fmt.Printf("Stop at %v setted\n\n", index)
 			continue
 		}
 
@@ -352,6 +372,10 @@ func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.
 
 	case coderunner.ReturnReachUntil:
 		fmt.Print("Until finished\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnReachStop:
+		fmt.Print("Reach stop\n\n")
 		*codeRunning = true
 
 	case coderunner.ReturnAfterFinish:
