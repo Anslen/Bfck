@@ -64,6 +64,8 @@ func main() {
 			return
 		}
 		codeRunner.Run()
+		fmt.Print("\n")
+
 	case "debug":
 		codeRunner, err := codereader.Read(os.Args[2], true)
 		if err != nil {
