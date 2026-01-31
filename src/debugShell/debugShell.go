@@ -129,7 +129,7 @@ func matchSimpleCommands(command string, codeRunner *coderunner.CodeRunner, code
 		if !*codeRunning {
 			fmt.Print("Code is not running. Use 'run' command to start.\n\n")
 		} else {
-			codeRunner.UntilLoopEnd()
+			codeRunner.EnableUntil()
 		}
 		return true
 
@@ -159,7 +159,7 @@ func matchSimpleCommands(command string, codeRunner *coderunner.CodeRunner, code
 		return true
 
 	case "code":
-		codeRunner.PrintAllOperator()
+		codeRunner.PrintAllOperators()
 		return true
 
 	case "h", "help":
@@ -255,10 +255,8 @@ func regMatchBreak(command string, codeRunner *coderunner.CodeRunner) bool {
 	fmt.Sscanf(matches[2], "%d", &line)
 
 	// Execute break
-	err := codeRunner.AddBreakPoint(line)
-	if err != nil {
-		fmt.Printf("%s\n\n", err.Error())
-	}
+	var message string = codeRunner.AddBreakPoint(line)
+	fmt.Print(message)
 	return true
 }
 

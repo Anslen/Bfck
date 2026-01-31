@@ -49,7 +49,7 @@ type CodeRunner struct {
 	watchUsed        bool
 	watchChecked     bool
 	watchHit         bool
-	untilStatus      bool
+	untilEnabled     bool
 }
 
 func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
@@ -76,14 +76,14 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 }
 
 // AddBreakPoint adds a breakpoint at the specified line.
-func (cr *CodeRunner) AddBreakPoint(line uint64) (err error) {
+func (cr *CodeRunner) AddBreakPoint(line uint64) (message string) {
 	if !cr.debugFlag {
 		panic("CodeRunner: can't add breakpoint when not in debug mode")
 	}
 
 	// Check line range
 	if line == 0 || line > cr.code.LineCount {
-		err = fmt.Errorf("Error: breakpoint out of range, line count is %v, get line %v", cr.code.LineCount, line)
+		message = fmt.Sprintf("Error: breakpoint out of range, line count is %v, get line %v", cr.code.LineCount, line)
 		return
 	}
 
@@ -92,17 +92,17 @@ func (cr *CodeRunner) AddBreakPoint(line uint64) (err error) {
 	if !found {
 		// Warn if breakpoint at empty line
 		if cr.code.LineBegins[line-1] == -1 {
-			fmt.Printf("Warning: breakpoint at line %v will not work\n\n", line)
+			message = fmt.Sprintf("Warning: breakpoint at line %v will not work\n\n", line)
 			return
 		}
 
 		cr.codeBreakPointed[cr.code.LineBegins[line-1]] = true
 		cr.breakPoint = slices.Insert(cr.breakPoint, position, line)
 		// Pirnt add success information
-		fmt.Printf("Breakpoint added at line %v\n\n", line)
+		message = fmt.Sprintf("Breakpoint added at line %v\n\n", line)
 
 	} else {
-		err = fmt.Errorf("Warning: Breakpoint at line %v already existed\n\n", line)
+		message = fmt.Sprintf("Warning: Breakpoint at line %v already existed\n\n", line)
 	}
 
 	return
@@ -151,7 +151,6 @@ func (cr *CodeRunner) ClearBreakPoints() {
 	}
 	cr.breakPoint = make([]uint64, 0)
 	cr.codeBreakPointed = make([]bool, cr.code.CodeCount)
-	fmt.Print("All breakpoints cleared\n\n")
 }
 
 // PrintBreakPoint prints all breakpoints and watching information.
@@ -201,13 +200,12 @@ func (cr *CodeRunner) RemoveWatch(index int) (message string) {
 	return
 }
 
-func (cr *CodeRunner) ClearWatches() (message string) {
+func (cr *CodeRunner) ClearWatches() {
 	if !cr.debugFlag {
 		panic("CodeRunner: can't clear watchpoints when not in debug mode")
 	}
 
 	cr.watchAddress = make([]int, 0)
-	return
 }
 
 // PrintWatchInfo prints all watchpoints information.
@@ -231,7 +229,7 @@ func (cr *CodeRunner) PrintWatchInfo() {
 }
 
 // PrintCode prints analysed code information.
-func (cr *CodeRunner) PrintAllOperator() {
+func (cr *CodeRunner) PrintAllOperators() {
 	cr.code.PrintAll()
 }
 
@@ -256,13 +254,13 @@ func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 	return cr.memory.PeekBytes(offset, length)
 }
 
-// UntilLoopEnd runs the code until the current loop (enclosed by []) ends.
-func (cr *CodeRunner) UntilLoopEnd() {
-	if cr.untilStatus {
+// EnableUntil enables the until mode.
+func (cr *CodeRunner) EnableUntil() {
+	if cr.untilEnabled {
 		fmt.Print("Already in until mode\n\n")
 		return
 	} else {
-		cr.untilStatus = true
+		cr.untilEnabled = true
 		fmt.Print("Entering until mode\n\n")
 	}
 }
@@ -360,9 +358,9 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	case code.OpRightBracket:
 		if cr.memory.Peek(0) != 0 {
 			cr.codeIndex = int(auxiliary)
-		} else if cr.untilStatus {
+		} else if cr.untilEnabled {
 			// Check until mode
-			cr.untilStatus = false
+			cr.untilEnabled = false
 			return ReturnReachUntil
 		}
 
@@ -398,7 +396,7 @@ func (cr *CodeRunner) Reset() {
 	// Clear debug flags
 	cr.breakPointUsed = false
 	cr.watchUsed = false
-	cr.untilStatus = false
+	cr.untilEnabled = false
 }
 
 // isWatchHit checks if the current memory pointer hits any watchpoint.
