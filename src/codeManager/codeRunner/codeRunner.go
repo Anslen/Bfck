@@ -320,24 +320,9 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	switch operator {
 	case code.OpAdd:
 		// Check watchpoint
-		if cr.debugFlag && !cr.watchChecked {
-			cr.watchChecked = true
-			var found bool
-			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
-			if found {
-				cr.watchHit = true
-			}
-		}
-
-		// If watch hit, pause before executing
-		if cr.debugFlag && cr.watchHit {
-			if cr.watchUsed {
-				cr.watchUsed = false
-			} else {
-				cr.watchUsed = true
-				cr.codeIndex--
-				return ReturnReachWatch
-			}
+		if cr.debugFlag && cr.isWatchHit() {
+			cr.codeIndex--
+			return ReturnReachWatch
 		}
 
 		// Execute addition
@@ -346,24 +331,9 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 
 	case code.OpSub:
 		// Check watchpoint
-		if cr.debugFlag && !cr.watchChecked {
-			cr.watchChecked = true
-			var found bool
-			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
-			if found {
-				cr.watchHit = true
-			}
-		}
-
-		// If watch hit, pause before executing
-		if cr.debugFlag && cr.watchHit {
-			if cr.watchUsed {
-				cr.watchUsed = false
-			} else {
-				cr.watchUsed = true
-				cr.codeIndex--
-				return ReturnReachWatch
-			}
+		if cr.debugFlag && cr.isWatchHit() {
+			cr.codeIndex--
+			return ReturnReachWatch
 		}
 
 		// Execute subtraction
@@ -398,25 +368,9 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		}
 
 	case code.OpInput:
-		// Check watchpoint
-		if cr.debugFlag && !cr.watchChecked {
-			cr.watchChecked = true
-			var found bool
-			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
-			if found {
-				cr.watchHit = true
-			}
-		}
-
-		// If watch hit, pause before executing
-		if cr.debugFlag && cr.watchHit {
-			if cr.watchUsed {
-				cr.watchUsed = false
-			} else {
-				cr.watchUsed = true
-				cr.codeIndex--
-				return ReturnReachWatch
-			}
+		if cr.debugFlag && cr.isWatchHit() {
+			cr.codeIndex--
+			return ReturnReachWatch
 		}
 
 		var input rune
@@ -446,4 +400,29 @@ func (cr *CodeRunner) Reset() {
 	cr.breakPointUsed = false
 	cr.watchUsed = false
 	cr.untilStatus = false
+}
+
+// isWatchHit checks if the current memory pointer hits any watchpoint.
+func (cr *CodeRunner) isWatchHit() bool {
+	if !cr.debugFlag {
+		panic("CodeRunner: can't check watch hit when not in debug mode")
+	}
+
+	// Check watchpoint only once after memory pointer changes
+	if !cr.watchChecked {
+		cr.watchChecked = true
+		var found bool
+		_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
+		if found {
+			cr.watchHit = true
+		}
+	}
+
+	// Return watch hit status, if watch used, flip the status and continue
+	if cr.watchHit {
+		cr.watchUsed = !cr.watchUsed
+		return cr.watchUsed
+	} else {
+		return false
+	}
 }
