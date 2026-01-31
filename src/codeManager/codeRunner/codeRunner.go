@@ -310,11 +310,10 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	case code.OpRightBracket:
 		if cr.memory.Peek(0) != 0 {
 			cr.codeIndex = int(auxiliary)
+		} else if cr.untilStatus {
 			// Check until mode
-			if cr.untilStatus {
-				cr.untilStatus = false
-				return ReturnReachUntil
-			}
+			cr.untilStatus = false
+			return ReturnReachUntil
 		}
 
 	case code.OpInput:
