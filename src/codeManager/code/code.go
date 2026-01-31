@@ -108,6 +108,54 @@ func (c Code) Print(index int) {
 	fmt.Printf("%-8d %-15s %d\n", index, c.Operators[index].String(), c.Auxiliary[index])
 }
 
+// ToOperator converts a rune character to the corresponding Operator.
+func ToOperator(char rune) (ret Operator) {
+	switch char {
+	case '+':
+		return OpAdd
+
+	case '-':
+		return OpSub
+
+	case '<':
+		return OpMoveLeft
+
+	case '>':
+		return OpMoveRight
+
+	case '[':
+		return OpLeftBracket
+
+	case ']':
+		return OpRightBracket
+
+	case '.':
+		return OpOutput
+
+	case ',':
+		return OpInput
+	}
+	return Invalid
+}
+
+// Reverse returns the opposite operator of the given operator.
+func (op Operator) Reverse() (ret Operator) {
+	switch op {
+	case OpAdd:
+		return OpSub
+
+	case OpSub:
+		return OpAdd
+
+	case OpMoveLeft:
+		return OpMoveRight
+
+	case OpMoveRight:
+		return OpMoveLeft
+	}
+	return Invalid
+}
+
 func (op Operator) String() string {
 	switch op {
 	case OpAdd:
