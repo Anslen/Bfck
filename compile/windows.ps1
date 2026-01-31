@@ -13,6 +13,9 @@ Write-Host "Building Bfck..."
 # Build the project
 Push-Location ../src
 try {
+    $env:CGO_ENABLED = "0"
+    $env:GOOS = "windows"
+    $env:GOARCH = "amd64"
     go build -ldflags "-s -w" -o ../bin/bfck.exe .
     Write-Host "Build successful! Output: bin\bfck.exe" -ForegroundColor Green
 } catch {
