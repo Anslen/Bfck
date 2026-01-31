@@ -29,7 +29,7 @@ import (
 
 const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
-	"s[tep] 				  : Step to next operator \n" +
+	"s[tep] [times]           : Step by times, default 1\n" +
 	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
 	"w[atch] <address>        : Watch memory at address\n" +
@@ -47,6 +47,7 @@ const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"q[uit]                   : Quit debug shell\n" +
 	"\n"
 
+var REG_STEP *regexp.Regexp = regexp.MustCompile(`^s(tep)?( (\d+))?$`)
 var REG_DETAILED *regexp.Regexp = regexp.MustCompile(`^d(etailed)?( (\d+))?$`)
 var REG_WATCH *regexp.Regexp = regexp.MustCompile(`^w(atch)? (-?\d+)$`)
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
@@ -126,32 +127,6 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 			continue
 
-		case "s", "step":
-			var ret coderunner.ReturnCode = codeRunner.Step()
-
-			// Check return code
-			switch ret {
-			case coderunner.ReturnReachWatch:
-				fmt.Print("Watch hit\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachUntil:
-				fmt.Print("Until finished\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnAfterFinish:
-				fmt.Print("\n\nRunning finished\n\n")
-				CodeRunning = false
-
-			case coderunner.ReturnAfterStep:
-				fmt.Print("\n")
-				CodeRunning = true
-
-			default:
-				panic("DebugShell: Invalid return code")
-			}
-			continue
-
 		case "t", "tape":
 			peekTape(codeRunner, -10, 20)
 			continue
@@ -213,6 +188,25 @@ func Start(codeRunner *coderunner.CodeRunner) {
 					CodeRunning = true
 				}
 			}
+			continue
+		}
+
+		if matches := REG_STEP.FindStringSubmatch(command); matches != nil {
+			// regex match step command
+			var times int
+			if matches[3] == "" {
+				times = 1
+			} else {
+				fmt.Sscanf(matches[3], "%d", &times)
+			}
+
+			for i := 0; i < times; i++ {
+				var ret coderunner.ReturnCode = step(codeRunner, &CodeRunning)
+				if ret == coderunner.ReturnAfterFinish {
+					break
+				}
+			}
+			fmt.Print("\n")
 			continue
 		}
 
@@ -339,6 +333,33 @@ func peekTape(codeRunner *coderunner.CodeRunner, offset, length int) {
 		}
 	}
 	fmt.Print("\n\n")
+}
+
+func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.ReturnCode) {
+	ret = codeRunner.Step()
+
+	// Check return code
+	switch ret {
+	case coderunner.ReturnReachWatch:
+		fmt.Print("Watch hit\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnReachUntil:
+		fmt.Print("Until finished\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnAfterFinish:
+		fmt.Print("\n\nRunning finished\n")
+		*codeRunning = false
+
+	case coderunner.ReturnAfterStep:
+		*codeRunning = true
+
+	default:
+		panic("DebugShell: Invalid return code")
+	}
+
+	return
 }
 
 // detailedStep performs a single step and prints detailed information.
