@@ -343,9 +343,17 @@ func peekTape(codeRunner *coderunner.CodeRunner, offset, length int) {
 
 // detailedStep performs a single step and prints detailed information.
 func detailedStep(codeRunner *coderunner.CodeRunner) (ret coderunner.ReturnCode) {
+	// Show next operator
 	codeRunner.PrintNextOperator()
 	fmt.Print("\n")
+
+	// Get and print memory pointer
+	var memoryPointer int = codeRunner.GetMemoryPointer()
+	fmt.Printf("Memory pointer at: %d\n", memoryPointer)
+
+	// Step code
 	ret = codeRunner.Step()
+
 	// Print tape around
 	peekTape(codeRunner, -10, 20)
 	return
