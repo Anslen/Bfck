@@ -47,6 +47,8 @@ type CodeRunner struct {
 	breakPointUsed   bool
 	watchAddress     []int
 	watchUsed        bool
+	watchChecked     bool
+	watchHit         bool
 	untilStatus      bool
 }
 
@@ -317,28 +319,54 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 
 	switch operator {
 	case code.OpAdd:
-		if !cr.watchUsed {
-			cr.watchUsed = true
+		// Check watchpoint
+		if cr.debugFlag && !cr.watchChecked {
+			cr.watchChecked = true
 			var found bool
 			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
 			if found {
+				cr.watchHit = true
+			}
+		}
+
+		// If watch hit, pause before executing
+		if cr.debugFlag && cr.watchHit {
+			if cr.watchUsed {
+				cr.watchUsed = false
+			} else {
+				cr.watchUsed = true
 				cr.codeIndex--
 				return ReturnReachWatch
 			}
 		}
+
+		// Execute addition
 		cr.memory.Add(auxiliary)
 		cr.watchUsed = false
 
 	case code.OpSub:
-		if !cr.watchUsed {
-			cr.watchUsed = true
+		// Check watchpoint
+		if cr.debugFlag && !cr.watchChecked {
+			cr.watchChecked = true
 			var found bool
 			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
 			if found {
+				cr.watchHit = true
+			}
+		}
+
+		// If watch hit, pause before executing
+		if cr.debugFlag && cr.watchHit {
+			if cr.watchUsed {
+				cr.watchUsed = false
+			} else {
+				cr.watchUsed = true
 				cr.codeIndex--
 				return ReturnReachWatch
 			}
 		}
+
+		// Execute subtraction
 		cr.memory.Sub(auxiliary)
 		cr.watchUsed = false
 
@@ -346,13 +374,13 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		// Memory block may change after moving pointer
 		cr.memory = cr.memory.MovePtr(-int(auxiliary))
 		cr.memoryPointer -= int(auxiliary)
-		cr.watchUsed = false
+		cr.watchChecked = false
 
 	case code.OpMoveRight:
 		// Memory block may change after moving pointer
 		cr.memory = cr.memory.MovePtr(int(auxiliary))
 		cr.memoryPointer += int(auxiliary)
-		cr.watchUsed = false
+		cr.watchChecked = false
 
 	case code.OpLeftBracket:
 		if cr.memory.Peek(0) == 0 {
@@ -370,11 +398,22 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		}
 
 	case code.OpInput:
-		if !cr.watchUsed {
-			cr.watchUsed = true
+		// Check watchpoint
+		if cr.debugFlag && !cr.watchChecked {
+			cr.watchChecked = true
 			var found bool
 			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
 			if found {
+				cr.watchHit = true
+			}
+		}
+
+		// If watch hit, pause before executing
+		if cr.debugFlag && cr.watchHit {
+			if cr.watchUsed {
+				cr.watchUsed = false
+			} else {
+				cr.watchUsed = true
 				cr.codeIndex--
 				return ReturnReachWatch
 			}
