@@ -27,21 +27,25 @@ import (
 	coderunner "github.com/Anslen/Bfck/codeManager/codeRunner"
 )
 
-const HELP_STRING string = "r[un]                    : Run code from begin\n" +
-	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
+const HELP_STRING string = "Execute commands:\n" +
+	"r[un]                    : Run code from begin\n" +
+	"c[ontinue]               : Continue run code\n" +
 	"s[tep] [times]           : Step by times, default 1\n" +
 	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
-	"w[atch] <address>        : Watch memory at address\n" +
+	"\nDebug commands:\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
+	"w[atch] <address>        : Watch memory at address\n" +
 	"del[ete] b|w <num>       : Delete breakpoint or watchpoint at specified number\n" +
 	"i[nfo] [b|w]             : Information of breakpoints or watching, default both\n" +
 	"clear [b|w]              : Clear all breakpoints or watchpoints, default both\n" +
+	"\nMemory commands:\n" +
 	"ptr                      : Show current memory pointer\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
 	"t[ape]                   : Show tape around, equal to peek -10 20\n" +
-	"n[ext]                   : Show next operator to be executed\n" +
 	"reset                    : Reset memory tape immediately\n" +
+	"\nOther commands:\n" +
+	"n[ext]                   : Show next operator to be executed\n" +
 	"code                     : Show analysed code information\n" +
 	"h[elp]                   : Show this help message\n" +
 	"q[uit]                   : Quit debug shell\n" +
@@ -341,6 +345,7 @@ func peekTape(codeRunner *coderunner.CodeRunner, offset, length int) {
 	fmt.Print("\n\n")
 }
 
+// step performs a single step and updates the code running status.
 func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.ReturnCode) {
 	ret = codeRunner.Step()
 
