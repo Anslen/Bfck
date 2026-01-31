@@ -322,10 +322,12 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 			var found bool
 			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
 			if found {
+				cr.codeIndex--
 				return ReturnReachWatch
 			}
 		}
 		cr.memory.Add(auxiliary)
+		cr.watchUsed = false
 
 	case code.OpSub:
 		if !cr.watchUsed {
@@ -333,10 +335,12 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 			var found bool
 			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
 			if found {
+				cr.codeIndex--
 				return ReturnReachWatch
 			}
 		}
 		cr.memory.Sub(auxiliary)
+		cr.watchUsed = false
 
 	case code.OpMoveLeft:
 		// Memory block may change after moving pointer
@@ -366,9 +370,20 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		}
 
 	case code.OpInput:
+		if !cr.watchUsed {
+			cr.watchUsed = true
+			var found bool
+			_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
+			if found {
+				cr.codeIndex--
+				return ReturnReachWatch
+			}
+		}
+
 		var input rune
 		fmt.Scanf("%c", &input)
 		cr.memory.Poke(byte(input))
+		cr.watchUsed = false
 
 	case code.OpOutput:
 		fmt.Printf("%c", cr.memory.Peek(0))
