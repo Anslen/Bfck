@@ -40,12 +40,15 @@ type CodeRunner struct {
 	code             *code.Code
 	codeIndex        int // Point at next operator to execute
 	memory           *memory.Memory
+	memoryPointer    int
 	debugFlag        bool
 	breakPoint       []uint64
 	codeBreakPointed []bool
 	breakPointUsed   bool
-	isWatching       bool
-	watchOffset      int
+	watchAddress     []int
+	watchUsed        bool
+	watchChecked     bool
+	watchHit         bool
 	untilStatus      bool
 }
 
@@ -61,6 +64,7 @@ func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
 			debugFlag:        true,
 			breakPoint:       make([]uint64, 0),
 			codeBreakPointed: make([]bool, code.CodeCount),
+			watchAddress:     make([]int, 0),
 		}
 	} else {
 		ret = &CodeRunner{
@@ -107,23 +111,24 @@ func (cr *CodeRunner) AddBreakPoint(line uint64) (err error) {
 // RemoveBreakPoint removes the breakpoint at the specified index.
 //
 // CAUSION: index start from 1
-func (cr *CodeRunner) RemoveBreakPoint(index int) (err error) {
+func (cr *CodeRunner) RemoveBreakPoint(index int) (message string) {
 	if !cr.debugFlag {
 		panic("CodeRunner: can't remove breakpoint when not in debug mode")
 	}
 
 	// Check index range
 	if index <= 0 || index > len(cr.breakPoint) {
-		err = fmt.Errorf("Error: breakpoint index out of range, get %v, breakpoint count is %v", index, len(cr.breakPoint))
+		message = fmt.Sprintf("Error: breakpoint index out of range, get %v, breakpoint count is %v", index, len(cr.breakPoint))
 		return
 	}
 
+	// Remove success information
+	message = fmt.Sprintf("Breakpoint %v removed\n\n", index)
+
+	// Remove breakpoint
 	var removedLine uint64 = cr.breakPoint[index-1]
 	var removedCodeIndex int = cr.code.LineBegins[removedLine-1]
 	cr.breakPoint = slices.Delete(cr.breakPoint, index-1, index)
-
-	// Print remove success information
-	fmt.Printf("Breakpoint %v removed\n\n", index)
 
 	// Remove code breakpoint mark if nessesary
 	// Check last breakpoint
@@ -145,14 +150,12 @@ func (cr *CodeRunner) ClearBreakPoints() {
 		panic("CodeRunner: can't clear breakpoints when not in debug mode")
 	}
 	cr.breakPoint = make([]uint64, 0)
-	for index := range cr.codeBreakPointed {
-		cr.codeBreakPointed[index] = false
-	}
+	cr.codeBreakPointed = make([]bool, cr.code.CodeCount)
 	fmt.Print("All breakpoints cleared\n\n")
 }
 
 // PrintBreakPoint prints all breakpoints and watching information.
-func (cr *CodeRunner) PrintDebugInfo() {
+func (cr *CodeRunner) PrintBreakPoints() {
 	if !cr.debugFlag {
 		panic("CodeRunner: can't print breakpoints when not in debug mode")
 	}
@@ -162,18 +165,68 @@ func (cr *CodeRunner) PrintDebugInfo() {
 		fmt.Print("No breakpoints exist now.\n\n")
 	} else {
 		// Print each breakpoint
+		fmt.Println("Breakpoints:")
 		fmt.Println("Num\tLine")
 		for index, line := range cr.breakPoint {
 			fmt.Printf("%v\t%v\n", index+1, line)
 		}
 		fmt.Print("\n")
 	}
+}
 
-	// Print watching info
-	if cr.isWatching {
-		fmt.Printf("Watching memory at offset %v\n\n", cr.watchOffset)
+// AddWatch sets a watch on the memory byte at the current pointer plus the given offset.
+func (cr *CodeRunner) AddWatch(address int) (message string) {
+	var (
+		position int
+		found    bool
+	)
+	position, found = slices.BinarySearch(cr.watchAddress, address)
+	if found {
+		message = fmt.Sprintf("Warning: Address %v is already being watched\n\n", address)
 	} else {
-		fmt.Print("No memory watching now.\n\n")
+		cr.watchAddress = slices.Insert(cr.watchAddress, position, address)
+		message = fmt.Sprintf("Watching memory %v\n\n", address)
+	}
+	return
+}
+
+func (cr *CodeRunner) RemoveWatch(index int) (message string) {
+	if index <= 0 || index > len(cr.watchAddress) {
+		message = fmt.Sprintf("Error: Watchpoint index out of range, get %v, watchpoint count is %v\n\n", index, len(cr.watchAddress))
+		return
+	}
+
+	message = fmt.Sprintf("Watchpoint %v at address %v removed\n\n", index, cr.watchAddress[index-1])
+	cr.watchAddress = slices.Delete(cr.watchAddress, index-1, index)
+	return
+}
+
+func (cr *CodeRunner) ClearWatches() (message string) {
+	if !cr.debugFlag {
+		panic("CodeRunner: can't clear watchpoints when not in debug mode")
+	}
+
+	cr.watchAddress = make([]int, 0)
+	return
+}
+
+// PrintWatchInfo prints all watchpoints information.
+func (cr *CodeRunner) PrintWatchInfo() {
+	if !cr.debugFlag {
+		panic("CodeRunner: can't print watchpoints when not in debug mode")
+	}
+
+	// Print watch info
+	if len(cr.watchAddress) == 0 {
+		fmt.Print("No watchpoints exist now.\n\n")
+	} else {
+		// Print each watchpoint
+		fmt.Println("Watch address:")
+		fmt.Println("Num\tAddress")
+		for index, address := range cr.watchAddress {
+			fmt.Printf("%v\t%v\n", index+1, address)
+		}
+		fmt.Print("\n")
 	}
 }
 
@@ -184,11 +237,16 @@ func (cr *CodeRunner) PrintAllOperator() {
 
 // PrintNextOperator prints the next operator to be executed.
 func (cr *CodeRunner) PrintNextOperator() {
-	if cr.codeIndex < 0 || cr.codeIndex >= cr.code.CodeCount {
-		panic("CodeRunner: code index out of range")
+	if cr.codeIndex >= cr.code.CodeCount {
+		cr.code.Print(0)
+	} else {
+		cr.code.Print(cr.codeIndex)
 	}
+}
 
-	cr.code.Print(cr.codeIndex)
+// GetMemoryPointer returns the current memory pointer.
+func (cr *CodeRunner) GetMemoryPointer() int {
+	return cr.memoryPointer
 }
 
 // PeekBytes peeks bytes from memory with the given offset and length.
@@ -196,13 +254,6 @@ func (cr *CodeRunner) PrintNextOperator() {
 // Offset is relative to the current memory pointer.
 func (cr *CodeRunner) PeekBytes(offset, length int) (ret []byte) {
 	return cr.memory.PeekBytes(offset, length)
-}
-
-// Watch sets a watch on the memory byte at the current pointer plus the given offset.
-func (cr *CodeRunner) Watch(offset int) {
-	cr.isWatching = true
-	cr.watchOffset = offset
-	fmt.Printf("Watch at offset %v\n\n", offset)
 }
 
 // UntilLoopEnd runs the code until the current loop (enclosed by []) ends.
@@ -217,20 +268,15 @@ func (cr *CodeRunner) UntilLoopEnd() {
 }
 
 // Run starts running the code from the beginning.
-//
-// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Run() (ret ReturnCode) {
-	cr.codeIndex = 0
-	cr.memory = memory.New()
+	cr.Reset()
 	ret = cr.Continue()
 	return
 }
 
 // Continue continues running the code from the current position.
-//
-// Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Continue() (ret ReturnCode) {
-	for cr.codeIndex < cr.code.CodeCount {
+	for {
 		// Check for breakpoint
 		if cr.breakPointUsed {
 			cr.breakPointUsed = false
@@ -241,33 +287,28 @@ func (cr *CodeRunner) Continue() (ret ReturnCode) {
 		}
 
 		// Execute operator
-		if ret := cr.executeOperator(); ret != returnAfterExecuteOperator {
+		if ret = cr.executeOperator(); ret != returnAfterExecuteOperator {
 			return ret
 		}
 	}
-
-	cr.reset()
-	return ReturnAfterFinish
 }
 
 // Step executes the next operator, ignore breakpoints.
-//
-// Return ReturnCode and current line number (1-based), line will be not setted
 func (cr *CodeRunner) Step() (ret ReturnCode) {
-	// Check if code has finished
+	// Check finish, reset if finished
 	if cr.codeIndex >= cr.code.CodeCount {
-		panic("CodeRunner: code index out of range")
+		cr.Reset()
 	}
 
-	cr.executeOperator()
+	// Execute operator
+	ret = cr.executeOperator()
 
-	// Check code finish
-	if cr.codeIndex >= cr.code.CodeCount {
-		cr.reset()
-		return ReturnAfterFinish
-	} else {
-		return ReturnAfterStep
+	// Change return code if after execute operator
+	if ret == returnAfterExecuteOperator {
+		ret = ReturnAfterStep
 	}
+
+	return
 }
 
 // executeOperator executes the current operator and advances the code index.
@@ -278,30 +319,38 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 
 	switch operator {
 	case code.OpAdd:
-		if cr.isWatching && cr.watchOffset == 0 {
-			cr.isWatching = false
+		// Check watchpoint
+		if cr.debugFlag && cr.isWatchHit() {
 			cr.codeIndex--
 			return ReturnReachWatch
 		}
+
+		// Execute addition
 		cr.memory.Add(auxiliary)
+		cr.watchUsed = false
 
 	case code.OpSub:
-		if cr.isWatching && cr.watchOffset == 0 {
-			cr.isWatching = false
+		// Check watchpoint
+		if cr.debugFlag && cr.isWatchHit() {
 			cr.codeIndex--
 			return ReturnReachWatch
 		}
+
+		// Execute subtraction
 		cr.memory.Sub(auxiliary)
+		cr.watchUsed = false
 
 	case code.OpMoveLeft:
 		// Memory block may change after moving pointer
 		cr.memory = cr.memory.MovePtr(-int(auxiliary))
-		cr.watchOffset += int(auxiliary)
+		cr.memoryPointer -= int(auxiliary)
+		cr.watchChecked = false
 
 	case code.OpMoveRight:
 		// Memory block may change after moving pointer
 		cr.memory = cr.memory.MovePtr(int(auxiliary))
-		cr.watchOffset -= int(auxiliary)
+		cr.memoryPointer += int(auxiliary)
+		cr.watchChecked = false
 
 	case code.OpLeftBracket:
 		if cr.memory.Peek(0) == 0 {
@@ -318,20 +367,61 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 		}
 
 	case code.OpInput:
+		if cr.debugFlag && cr.isWatchHit() {
+			cr.codeIndex--
+			return ReturnReachWatch
+		}
+
 		var input rune
 		fmt.Scanf("%c", &input)
 		cr.memory.Poke(byte(input))
+		cr.watchUsed = false
 
 	case code.OpOutput:
 		fmt.Printf("%c", cr.memory.Peek(0))
 	}
 
-	return returnAfterExecuteOperator
+	if cr.codeIndex >= cr.code.CodeCount {
+		return ReturnAfterFinish
+	} else {
+		return returnAfterExecuteOperator
+	}
 }
 
-func (cr *CodeRunner) reset() {
+// Reset resets the CodeRunner to the initial state.
+func (cr *CodeRunner) Reset() {
+	// Reset code index and memory
 	cr.codeIndex = 0
 	cr.memory = memory.New()
-	cr.isWatching = false
+	cr.memoryPointer = 0
+
+	// Clear debug flags
+	cr.breakPointUsed = false
+	cr.watchUsed = false
 	cr.untilStatus = false
+}
+
+// isWatchHit checks if the current memory pointer hits any watchpoint.
+func (cr *CodeRunner) isWatchHit() bool {
+	if !cr.debugFlag {
+		panic("CodeRunner: can't check watch hit when not in debug mode")
+	}
+
+	// Check watchpoint only once after memory pointer changes
+	if !cr.watchChecked {
+		cr.watchChecked = true
+		var found bool
+		_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
+		if found {
+			cr.watchHit = true
+		}
+	}
+
+	// Return watch hit status, if watch used, flip the status and continue
+	if cr.watchHit {
+		cr.watchUsed = !cr.watchUsed
+		return cr.watchUsed
+	} else {
+		return false
+	}
 }

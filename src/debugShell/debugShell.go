@@ -29,23 +29,30 @@ import (
 
 const HELP_STRING string = "r[un]                    : Run code from begin\n" +
 	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
-	"s[tep]:				  : Step to next operator \n" +
+	"s[tep] 				  : Step to next operator \n" +
+	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
-	"w[atch] <offset>         : Watch memory byte at current pointer plus offset\n" +
+	"w[atch] <address>        : Watch memory at address\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
-	"d[elete] <line>          : Delete breakpoint at specified line\n" +
-	"i[nfo]                   : Information of breakpoints and watching\n" +
-	"clear                    : Clear all breakpoints\n" +
+	"del[ete] b|w <num>       : Delete breakpoint or watchpoint at specified number\n" +
+	"i[nfo] [b|w]             : Information of breakpoints or watching, default both\n" +
+	"clear [b|w]              : Clear all breakpoints or watchpoints, default both\n" +
+	"ptr                      : Show current memory pointer\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
+	"t[ape]                   : Show tape around, equal to peek -10 20\n" +
 	"n[ext]                   : Show next operator to be executed\n" +
+	"reset                    : Reset memory tape immediately\n" +
 	"code                     : Show analysed code information\n" +
 	"h[elp]                   : Show this help message\n" +
 	"q[uit]                   : Quit debug shell\n" +
 	"\n"
 
+var REG_DETAILED *regexp.Regexp = regexp.MustCompile(`^d(etailed)?( (\d+))?$`)
 var REG_WATCH *regexp.Regexp = regexp.MustCompile(`^w(atch)? (-?\d+)$`)
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
-var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^d(elete)? (\d+)$`)
+var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^del(ete)? (b|w) (\d+)$`)
+var REG_INFO *regexp.Regexp = regexp.MustCompile(`^i(nfo)?( (b|w))?$`)
+var REG_CLEAR *regexp.Regexp = regexp.MustCompile(`^clear( (b|w))?$`)
 var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`)
 
 // Start starts the debug shell for the given code runner.
@@ -115,21 +122,38 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				CodeRunning = false
 
 			default:
-				panic("DebugShell: Unknown return code")
+				panic("DebugShell: Invalid return code")
 			}
-			fmt.Print("\n")
 			continue
 
 		case "s", "step":
 			var ret coderunner.ReturnCode = codeRunner.Step()
-			fmt.Print("\n")
 
 			// Check return code
-			if ret == coderunner.ReturnAfterFinish {
-				CodeRunning = false
-			} else {
+			switch ret {
+			case coderunner.ReturnReachWatch:
+				fmt.Print("Watch hit\n\n")
 				CodeRunning = true
+
+			case coderunner.ReturnReachUntil:
+				fmt.Print("Until finished\n\n")
+				CodeRunning = true
+
+			case coderunner.ReturnAfterFinish:
+				fmt.Print("\n\nRunning finished\n\n")
+				CodeRunning = false
+
+			case coderunner.ReturnAfterStep:
+				fmt.Print("\n")
+				CodeRunning = true
+
+			default:
+				panic("DebugShell: Invalid return code")
 			}
+			continue
+
+		case "t", "tape":
+			peekTape(codeRunner, -10, 20)
 			continue
 
 		case "u", "until":
@@ -141,17 +165,19 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			}
 			continue
 
-		case "i", "info":
-			codeRunner.PrintDebugInfo()
-			continue
-
-		case "clear":
-			codeRunner.ClearBreakPoints()
+		case "ptr":
+			var ptr int = codeRunner.GetMemoryPointer()
+			fmt.Printf("Current memory pointer: %d\n\n", ptr)
 			continue
 
 		case "n", "next":
 			codeRunner.PrintNextOperator()
 			fmt.Print("\n") // Extra newline for better readability
+			continue
+
+		case "reset":
+			codeRunner.Reset()
+			fmt.Print("Memory tape reseted.\n\n")
 			continue
 
 		case "code":
@@ -166,11 +192,36 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			return
 		}
 
+		if matches := REG_DETAILED.FindStringSubmatch(command); matches != nil {
+			// regex match detailed command
+			var times uint64
+			if matches[3] == "" {
+				times = ^uint64(0)
+			} else {
+				fmt.Sscanf(matches[3], "%d", &times)
+			}
+
+			var i uint64
+			for i = 0; i < times; i++ {
+				var ret coderunner.ReturnCode = detailedStep(codeRunner)
+				// Check return code
+				if ret == coderunner.ReturnAfterFinish {
+					fmt.Print("\n\nRunning finished\n\n")
+					CodeRunning = false
+					break
+				} else {
+					CodeRunning = true
+				}
+			}
+			continue
+		}
+
 		if matches := REG_WATCH.FindStringSubmatch(command); matches != nil {
 			// regex match watch command
-			var offset int
-			fmt.Sscanf(matches[2], "%d", &offset)
-			codeRunner.Watch(offset)
+			var address int
+			fmt.Sscanf(matches[2], "%d", &address)
+			var message string = codeRunner.AddWatch(address)
+			fmt.Print(message)
 			continue
 		}
 
@@ -188,12 +239,65 @@ func Start(codeRunner *coderunner.CodeRunner) {
 
 		if matches := REG_DELETE.FindStringSubmatch(command); matches != nil {
 			// regex match delete command
+			// Read index
 			var index int
-			fmt.Sscanf(matches[2], "%d", &index)
+			fmt.Sscanf(matches[3], "%d", &index)
 
-			err := codeRunner.RemoveBreakPoint(index)
-			if err != nil {
-				fmt.Printf("%s\n\n", err.Error())
+			// Remove according to type
+			var message string
+			switch matches[2] {
+			case "b":
+				message = codeRunner.RemoveBreakPoint(index)
+
+			case "w":
+				message = codeRunner.RemoveWatch(index)
+
+			default:
+				panic("DebugShell: Invalid delete command")
+			}
+
+			// Print result message
+			fmt.Print(message)
+			continue
+		}
+
+		if matches := REG_INFO.FindStringSubmatch(command); matches != nil {
+			// regex match info command
+			switch matches[3] {
+			case "b":
+				codeRunner.PrintBreakPoints()
+
+			case "w":
+				codeRunner.PrintWatchInfo()
+
+			case "":
+				codeRunner.PrintBreakPoints()
+				codeRunner.PrintWatchInfo()
+
+			default:
+				panic("DebugShell: Invalid info command")
+			}
+			continue
+		}
+
+		if matches := REG_CLEAR.FindStringSubmatch(command); matches != nil {
+			// regex match clear command
+			switch matches[2] {
+			case "b":
+				codeRunner.ClearBreakPoints()
+				fmt.Print("All breakpoints cleared\n\n")
+
+			case "w":
+				codeRunner.ClearWatches()
+				fmt.Print("All watchpoints cleared\n\n")
+
+			case "":
+				codeRunner.ClearBreakPoints()
+				codeRunner.ClearWatches()
+				fmt.Print("All breakpoints and watchpoints cleared\n\n")
+
+			default:
+				panic("DebugShell: Invalid clear command")
 			}
 			continue
 		}
@@ -214,20 +318,43 @@ func Start(codeRunner *coderunner.CodeRunner) {
 				fmt.Sscanf(matches[5], "%d", &length)
 			}
 
-			var bytes []byte = codeRunner.PeekBytes(offset, length)
-			// Print bytes
-			for index, each := range bytes {
-				if offset+index == 0 {
-					fmt.Printf("[%d] ", each)
-				} else {
-					fmt.Printf("%d ", each)
-				}
-			}
-			fmt.Print("\n\n")
+			peekTape(codeRunner, offset, length)
 			continue
 		}
 
 		// No match command, print help
 		fmt.Print("Unknown command. Type h for help\n\n")
 	}
+}
+
+// peekTape peeks memory bytes at the given offset and length, and prints them.
+func peekTape(codeRunner *coderunner.CodeRunner, offset, length int) {
+	var bytes []byte = codeRunner.PeekBytes(offset, length)
+	// Print bytes
+	for index, each := range bytes {
+		if offset+index == 0 {
+			fmt.Printf("[%d] ", each)
+		} else {
+			fmt.Printf("%d ", each)
+		}
+	}
+	fmt.Print("\n\n")
+}
+
+// detailedStep performs a single step and prints detailed information.
+func detailedStep(codeRunner *coderunner.CodeRunner) (ret coderunner.ReturnCode) {
+	// Show next operator
+	codeRunner.PrintNextOperator()
+	fmt.Print("\n")
+
+	// Get and print memory pointer
+	var memoryPointer int = codeRunner.GetMemoryPointer()
+	fmt.Printf("Memory pointer at: %d\n", memoryPointer)
+
+	// Step code
+	ret = codeRunner.Step()
+
+	// Print tape around
+	peekTape(codeRunner, -10, 20)
+	return
 }

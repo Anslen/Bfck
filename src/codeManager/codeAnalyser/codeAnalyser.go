@@ -18,6 +18,8 @@
 package codeanalyser
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Anslen/Bfck/codeManager/bracketNotCloseError"
@@ -31,6 +33,7 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 
 	// Return early if codeText is empty
 	if len(codeText) == 0 {
+		err = errors.New("Error: Code is empty")
 		return
 	}
 
@@ -53,20 +56,67 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 			case '+':
 				// Try to combine with last operator
 				// If current line is empty and in debug mode, force to create new operator
-				if (lastOperator != code.OpAdd) || forceNewOperator {
-					pushOperator(ret, code.OpAdd)
-				} else {
-					ret.Auxiliary[len(ret.Auxiliary)-1]++
+				if !forceNewOperator {
+					if lastOperator == code.OpAdd {
+						ret.Auxiliary[len(ret.Auxiliary)-1]++
+						continue
+					} else if lastOperator == code.OpSub {
+						// If last operator is Sub, try to reduce it
+						ret.Auxiliary[len(ret.Auxiliary)-1]--
+						if ret.Auxiliary[len(ret.Auxiliary)-1] == 0 {
+							// Remove last operator
+							ret.Operators = ret.Operators[:len(ret.Operators)-1]
+							ret.Auxiliary = ret.Auxiliary[:len(ret.Auxiliary)-1]
+
+							// Reset lineIsEmpty if needed
+							if debugFlag && ret.LineBegins[len(ret.LineBegins)-1] == len(ret.Operators) {
+								lineIsEmpty = true
+							}
+
+							// Update lastOperator
+							if len(ret.Operators) == 0 {
+								lastOperator = code.Invalid
+							} else {
+								lastOperator = ret.Operators[len(ret.Operators)-1]
+							}
+						}
+						continue
+					}
 				}
+				pushOperator(ret, code.OpAdd)
 				lastOperator = code.OpAdd
 				lineIsEmpty = false
 
 			case '-':
-				if (lastOperator != code.OpSub) || forceNewOperator {
-					pushOperator(ret, code.OpSub)
-				} else {
-					ret.Auxiliary[len(ret.Auxiliary)-1]++
+				if !forceNewOperator {
+					if lastOperator == code.OpSub {
+						ret.Auxiliary[len(ret.Auxiliary)-1]++
+						continue
+
+					} else if lastOperator == code.OpAdd {
+						// If last operator is Add, try to reduce it
+						ret.Auxiliary[len(ret.Auxiliary)-1]--
+						if ret.Auxiliary[len(ret.Auxiliary)-1] == 0 {
+							// Remove last operator
+							ret.Operators = ret.Operators[:len(ret.Operators)-1]
+							ret.Auxiliary = ret.Auxiliary[:len(ret.Auxiliary)-1]
+
+							// Reset lineIsEmpty if needed
+							if debugFlag && ret.LineBegins[len(ret.LineBegins)-1] == len(ret.Operators) {
+								lineIsEmpty = true
+							}
+
+							// Update lastOperator
+							if len(ret.Operators) == 0 {
+								lastOperator = code.Invalid
+							} else {
+								lastOperator = ret.Operators[len(ret.Operators)-1]
+							}
+						}
+						continue
+					}
 				}
+				pushOperator(ret, code.OpSub)
 				lastOperator = code.OpSub
 				lineIsEmpty = false
 
@@ -105,12 +155,17 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 				var leftBracketIndex uint64 = bracketIndexStack[len(bracketIndexStack)-1]
 				bracketIndexStack = bracketIndexStack[:len(bracketIndexStack)-1]
 
+				// Check empty loop and warn
+				if leftBracketIndex == uint64(len(ret.Operators))-1 {
+					fmt.Printf("Warning: Empty loop at line %v\n", lineCount)
+				}
+
 				// Set jump positions in Auxiliary data
 				pushOperator(ret, code.OpRightBracket)
-				ret.Auxiliary[len(ret.Auxiliary)-1] = leftBracketIndex
+				ret.Auxiliary[len(ret.Auxiliary)-1] = leftBracketIndex + 1
 
 				// Set jump position for left bracket
-				ret.Auxiliary[leftBracketIndex] = uint64(len(ret.Operators) - 1)
+				ret.Auxiliary[leftBracketIndex] = uint64(len(ret.Operators))
 
 				lastOperator = code.OpRightBracket
 				lineIsEmpty = false
@@ -160,6 +215,12 @@ func Analyse(codeText string, debugFlag bool) (ret *code.Code, err error) {
 				}
 			}
 		}
+	}
+
+	if len(ret.Operators) == 0 {
+		// Code is empty after analysis
+		ret = nil
+		err = errors.New("Error: Code is empty")
 	}
 
 	return
