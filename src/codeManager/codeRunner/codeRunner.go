@@ -221,6 +221,7 @@ func (cr *CodeRunner) UntilLoopEnd() {
 // Return ReturnCode and current line number (1-based), line only valid when hit breakpoint
 func (cr *CodeRunner) Run() (ret ReturnCode) {
 	cr.codeIndex = 0
+	cr.memory = memory.New()
 	ret = cr.Continue()
 	return
 }
