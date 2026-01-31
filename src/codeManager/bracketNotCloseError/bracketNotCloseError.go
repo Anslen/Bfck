@@ -20,7 +20,7 @@ package bracketNotCloseError
 import "fmt"
 
 type BracketNotCloseError struct {
-	line        uint64
+	line        int
 	errorString string
 }
 
@@ -32,7 +32,7 @@ func (e *BracketNotCloseError) Error() string {
 // newBracketNotCloseError creates a new BracketNotCloseError with the given line, column, and error line.
 //
 // CAUSION: lineCount start from 1, columnIndex start from 0
-func New(lineCount uint64, columnIndex int, errorLine string) (ret *BracketNotCloseError) {
+func New(lineCount int, columnIndex int, errorLine string) (ret *BracketNotCloseError) {
 	ret = &BracketNotCloseError{
 		line:        lineCount,
 		errorString: errorLine,

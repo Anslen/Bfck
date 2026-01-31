@@ -27,22 +27,27 @@ import (
 	coderunner "github.com/Anslen/Bfck/codeManager/codeRunner"
 )
 
-const HELP_STRING string = "r[un]                    : Run code from begin\n" +
-	"c[ontinue]               : Continue running code until next breakpoint or end\n" +
+const HELP_STRING string = "Execute commands:\n" +
+	"r[un]                    : Run code from begin\n" +
+	"c[ontinue]               : Continue run code\n" +
 	"s[tep] [times]           : Step by times, default 1\n" +
 	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
+	"\nDebug commands:\n" +
 	"stop <index>			  : Stop execution at specified operator index\n" +
 	"w[atch] <address>        : Watch memory at address\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
+	"w[atch] <address>        : Watch memory at address\n" +
 	"del[ete] b|w <num>       : Delete breakpoint or watchpoint at specified number\n" +
 	"i[nfo] [b|w]             : Information of breakpoints or watching, default both\n" +
 	"clear [b|w]              : Clear all breakpoints or watchpoints, default both\n" +
+	"\nMemory commands:\n" +
 	"ptr                      : Show current memory pointer\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
 	"t[ape]                   : Show tape around, equal to peek -10 20\n" +
-	"n[ext]                   : Show next operator to be executed\n" +
 	"reset                    : Reset memory tape immediately\n" +
+	"\nOther commands:\n" +
+	"n[ext]                   : Show next operator to be executed\n" +
 	"code                     : Show analysed code information\n" +
 	"h[elp]                   : Show this help message\n" +
 	"q[uit]                   : Quit debug shell\n" +
@@ -58,12 +63,24 @@ var REG_INFO *regexp.Regexp = regexp.MustCompile(`^i(nfo)?( (b|w))?$`)
 var REG_CLEAR *regexp.Regexp = regexp.MustCompile(`^clear( (b|w))?$`)
 var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`)
 
+var DEBUG_REG_FUNCTIONS = []func(string, *coderunner.CodeRunner) bool{
+	regMatchStop,
+	regMatchBreak,
+	regMatchWatch,
+	regMatchDelete,
+	regMatchInfo,
+	regMatchClear,
+	regMatchPeek,
+}
+
 // Start starts the debug shell for the given code runner.
 func Start(codeRunner *coderunner.CodeRunner) {
 	var CodeRunning bool = false
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("(Bfck) ")
+
+		// Read command
 		if !scanner.Scan() {
 			break
 		}
@@ -72,278 +89,356 @@ func Start(codeRunner *coderunner.CodeRunner) {
 			continue
 		}
 
-		switch command {
-		case "r", "run":
-			// Run code from beginning and get return code
-			var ret coderunner.ReturnCode = codeRunner.Run()
-			switch ret {
-			case coderunner.ReturnReachBreakPoint:
-				fmt.Print("\n\nHit breakpoint\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachWatch:
-				fmt.Print("\n\nWatch hit\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachUntil:
-				fmt.Print("\n\nUntil finished\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachStop:
-				fmt.Print("\n\nReach stop\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnAfterFinish:
-				fmt.Print("\n\nRunning finished\n\n")
-				CodeRunning = false
-
-			default:
-				panic("DebugShell: Unknown return code")
-			}
-			continue
-
-		case "c", "continue":
-			// Check if code is running
-			if !CodeRunning {
-				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
-				continue
-			}
-
-			// Continue running code
-			var ret coderunner.ReturnCode = codeRunner.Continue()
-			switch ret {
-			case coderunner.ReturnReachBreakPoint:
-				fmt.Print("\n\nHit breakpoint\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachWatch:
-				fmt.Print("\n\nWatch hit\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachUntil:
-				fmt.Print("\n\nUntil finished\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnReachStop:
-				fmt.Print("\n\nReach stop\n\n")
-				CodeRunning = true
-
-			case coderunner.ReturnAfterFinish:
-				fmt.Print("\n\nRunning finished\n\n")
-				CodeRunning = false
-
-			default:
-				panic("DebugShell: Invalid return code")
-			}
-			continue
-
-		case "t", "tape":
-			// Print memory pointer
-			var ptr int = codeRunner.GetMemoryPointer()
-			fmt.Printf("Current memory pointer: %d\n", ptr)
-
-			// Peek tape around
-			peekTape(codeRunner, -10, 20)
-
-			continue
-
-		case "u", "until":
-			// Check if code is running
-			if !CodeRunning {
-				fmt.Print("Code is not running. Use 'run' command to start.\n\n")
-			} else {
-				codeRunner.UntilLoopEnd()
-			}
-			continue
-
-		case "ptr":
-			var ptr int = codeRunner.GetMemoryPointer()
-			fmt.Printf("Current memory pointer: %d\n\n", ptr)
-			continue
-
-		case "n", "next":
-			codeRunner.PrintNextOperator()
-			fmt.Print("\n") // Extra newline for better readability
-			continue
-
-		case "reset":
-			codeRunner.Reset()
-			fmt.Print("Memory tape reseted.\n\n")
-			continue
-
-		case "code":
-			codeRunner.PrintAllOperator()
-			continue
-
-		case "h", "help":
-			fmt.Print(HELP_STRING)
-			continue
-
-		case "q", "quit":
-			return
+		// Quit command
+		if command == "q" || command == "quit" {
+			break
 		}
 
-		if matches := REG_DETAILED.FindStringSubmatch(command); matches != nil {
-			// regex match detailed command
-			var times uint64
-			if matches[3] == "" {
-				times = ^uint64(0)
-			} else {
-				fmt.Sscanf(matches[3], "%d", &times)
-			}
-
-			var i uint64
-			for i = 0; i < times; i++ {
-				var ret coderunner.ReturnCode = detailedStep(codeRunner)
-				// Check return code
-				if ret == coderunner.ReturnAfterFinish {
-					fmt.Print("\n\nRunning finished\n\n")
-					CodeRunning = false
-					break
-				} else {
-					CodeRunning = true
-				}
-			}
+		// Match simple commands
+		if matchSimpleCommands(command, codeRunner, &CodeRunning) {
 			continue
 		}
 
-		if matches := REG_STEP.FindStringSubmatch(command); matches != nil {
-			// regex match step command
-			var times int
-			if matches[3] == "" {
-				times = 1
-			} else {
-				fmt.Sscanf(matches[3], "%d", &times)
-			}
-
-			for i := 0; i < times; i++ {
-				var ret coderunner.ReturnCode = step(codeRunner, &CodeRunning)
-				if ret == coderunner.ReturnAfterFinish {
-					break
-				}
-			}
-			fmt.Print("\n")
+		// Match regex commands
+		if matchRegexCommands(command, codeRunner, &CodeRunning) {
 			continue
 		}
 
-		if matches := REG_STOP.FindStringSubmatch(command); matches != nil {
-			// regex match stop command
-			var index int
-			fmt.Sscanf(matches[1], "%d", &index)
-
-			codeRunner.SetStopPoint(index)
-			fmt.Printf("Stop at %v setted\n\n", index)
-			continue
-		}
-
-		if matches := REG_WATCH.FindStringSubmatch(command); matches != nil {
-			// regex match watch command
-			var address int
-			fmt.Sscanf(matches[2], "%d", &address)
-			var message string = codeRunner.AddWatch(address)
-			fmt.Print(message)
-			continue
-		}
-
-		if matches := REG_BREAK.FindStringSubmatch(command); matches != nil {
-			// regex match break command
-			var line uint64
-			fmt.Sscanf(matches[2], "%d", &line)
-			err := codeRunner.AddBreakPoint(line)
-
-			if err != nil {
-				fmt.Printf("%s\n\n", err.Error())
-			}
-			continue
-		}
-
-		if matches := REG_DELETE.FindStringSubmatch(command); matches != nil {
-			// regex match delete command
-			// Read index
-			var index int
-			fmt.Sscanf(matches[3], "%d", &index)
-
-			// Remove according to type
-			var message string
-			switch matches[2] {
-			case "b":
-				message = codeRunner.RemoveBreakPoint(index)
-
-			case "w":
-				message = codeRunner.RemoveWatch(index)
-
-			default:
-				panic("DebugShell: Invalid delete command")
-			}
-
-			// Print result message
-			fmt.Print(message)
-			continue
-		}
-
-		if matches := REG_INFO.FindStringSubmatch(command); matches != nil {
-			// regex match info command
-			switch matches[3] {
-			case "b":
-				codeRunner.PrintBreakPoints()
-
-			case "w":
-				codeRunner.PrintWatchInfo()
-
-			case "":
-				codeRunner.PrintBreakPoints()
-				codeRunner.PrintWatchInfo()
-
-			default:
-				panic("DebugShell: Invalid info command")
-			}
-			continue
-		}
-
-		if matches := REG_CLEAR.FindStringSubmatch(command); matches != nil {
-			// regex match clear command
-			switch matches[2] {
-			case "b":
-				codeRunner.ClearBreakPoints()
-				fmt.Print("All breakpoints cleared\n\n")
-
-			case "w":
-				codeRunner.ClearWatches()
-				fmt.Print("All watchpoints cleared\n\n")
-
-			case "":
-				codeRunner.ClearBreakPoints()
-				codeRunner.ClearWatches()
-				fmt.Print("All breakpoints and watchpoints cleared\n\n")
-
-			default:
-				panic("DebugShell: Invalid clear command")
-			}
-			continue
-		}
-
-		if matches := REG_PEEK.FindStringSubmatch(command); matches != nil {
-			// regex match peek command
-			var offset, length int
-			// Read offset
-			if matches[3] == "" {
-				offset = 0
-			} else {
-				fmt.Sscanf(matches[3], "%d", &offset)
-			}
-			// Read length
-			if matches[5] == "" {
-				length = 1
-			} else {
-				fmt.Sscanf(matches[5], "%d", &length)
-			}
-
-			peekTape(codeRunner, offset, length)
-			continue
-		}
-
-		// No match command, print help
+		// No match command
 		fmt.Print("Unknown command. Type h for help\n\n")
+	}
+}
+
+// matchSimpleCommands matches simple commands that does not require regex.
+func matchSimpleCommands(command string, codeRunner *coderunner.CodeRunner, codeRunning *bool) bool {
+	switch command {
+	case "r", "run":
+		// Run code from beginning and get return code
+		printDebugMessage(codeRunner.Run(), codeRunning)
+		return true
+
+	case "c", "continue":
+		// Check if code is running
+		if !*codeRunning {
+			fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+			return true
+		}
+
+		// Continue running code
+		printDebugMessage(codeRunner.Continue(), codeRunning)
+		return true
+
+	case "u", "until":
+		// Check if code is running
+		if !*codeRunning {
+			fmt.Print("Code is not running. Use 'run' command to start.\n\n")
+		} else {
+			codeRunner.EnableUntil()
+		}
+		return true
+
+	case "ptr":
+		var ptr int = codeRunner.GetMemoryPointer()
+		fmt.Printf("Current memory pointer: %d\n\n", ptr)
+		return true
+
+	case "t", "tape":
+		// Print memory pointer
+		var ptr int = codeRunner.GetMemoryPointer()
+		fmt.Printf("Current memory pointer: %d\n", ptr)
+
+		// Peek tape around
+		peekTape(codeRunner, -10, 20)
+
+		return true
+
+	case "reset":
+		codeRunner.Reset()
+		fmt.Print("Memory tape reseted.\n\n")
+		return true
+
+	case "n", "next":
+		codeRunner.PrintNextOperator()
+		fmt.Print("\n") // Extra newline for better readability
+		return true
+
+	case "code":
+		codeRunner.PrintAllOperators()
+		return true
+
+	case "h", "help":
+		fmt.Print(HELP_STRING)
+		return true
+	}
+	return false
+}
+
+// matchRegexCommands tries to match the command with regex commands.
+func matchRegexCommands(command string, codeRunner *coderunner.CodeRunner, codeRunning *bool) bool {
+	if regMatchStep(command, codeRunner, codeRunning) {
+		return true
+	}
+	if regMatchDetailed(command, codeRunner, codeRunning) {
+		return true
+	}
+
+	for _, function := range DEBUG_REG_FUNCTIONS {
+		if function(command, codeRunner) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// regMatchStep regex matching and executing step command.
+func regMatchStep(command string, codeRunner *coderunner.CodeRunner, codeRunning *bool) bool {
+	// Match regex
+	var matches []string = REG_STEP.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var times int
+	if matches[3] == "" {
+		times = 1
+	} else {
+		fmt.Sscanf(matches[3], "%d", &times)
+	}
+
+	// Execute step
+	for i := 0; i < times; i++ {
+		var ret coderunner.ReturnCode = step(codeRunner, codeRunning)
+		if ret == coderunner.ReturnAfterFinish {
+			break
+		}
+	}
+	fmt.Print("\n")
+	return true
+}
+
+func regMatchStop(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_STOP.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var index int
+	fmt.Sscanf(matches[1], "%d", &index)
+
+	// Execute stop
+	codeRunner.SetStopPoint(index)
+	fmt.Printf("Stop at %v setted\n\n", index)
+	return true
+}
+
+// regMatchDetailed regex matching and executing detailed command.
+func regMatchDetailed(command string, codeRunner *coderunner.CodeRunner, codeRunning *bool) bool {
+	// Match regex
+	var matches []string = REG_DETAILED.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var times uint64
+	if matches[3] == "" {
+		times = ^uint64(0)
+	} else {
+		fmt.Sscanf(matches[3], "%d", &times)
+	}
+
+	// Execute detailed step
+	var i uint64
+	for i = 0; i < times; i++ {
+		var ret coderunner.ReturnCode = detailedStep(codeRunner, codeRunning)
+		// Break when finished
+		if ret == coderunner.ReturnAfterFinish {
+			break
+		}
+	}
+	return true
+}
+
+// regMatchBreak regex matching and executing break command.
+func regMatchBreak(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_BREAK.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var line uint64
+	fmt.Sscanf(matches[2], "%d", &line)
+
+	// Execute break
+	var message string = codeRunner.AddBreakPoint(line)
+	fmt.Print(message)
+	return true
+}
+
+// regMatchWatch regex matching and executing watch command.
+func regMatchWatch(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_WATCH.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var address int
+	fmt.Sscanf(matches[2], "%d", &address)
+
+	// Execute watch
+	var message string = codeRunner.AddWatch(address)
+	fmt.Print(message)
+	return true
+}
+
+// regMatchDelete regex matching and executing delete command.
+func regMatchDelete(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_DELETE.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read index
+	var index int
+	fmt.Sscanf(matches[3], "%d", &index)
+
+	// Remove according to type
+	var message string
+	switch matches[2] {
+	case "b":
+		message = codeRunner.RemoveBreakPoint(index)
+
+	case "w":
+		message = codeRunner.RemoveWatch(index)
+
+	default:
+		panic("DebugShell: Invalid delete command")
+	}
+
+	// Print result message
+	fmt.Print(message)
+	return true
+}
+
+// regMatchInfo regex matching and executing info command.
+func regMatchInfo(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_INFO.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Execute info
+	switch matches[3] {
+	case "b":
+		codeRunner.PrintBreakPoints()
+
+	case "w":
+		codeRunner.PrintWatchInfo()
+
+	case "":
+		codeRunner.PrintBreakPoints()
+		codeRunner.PrintWatchInfo()
+
+	default:
+		panic("DebugShell: Invalid info command")
+	}
+	return true
+}
+
+// regMatchClear regex matching and executing clear command.
+func regMatchClear(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_CLEAR.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Execute clear
+	switch matches[2] {
+	case "b":
+		codeRunner.ClearBreakPoints()
+		fmt.Print("All breakpoints cleared\n\n")
+
+	case "w":
+		codeRunner.ClearWatches()
+		fmt.Print("All watchpoints cleared\n\n")
+
+	case "":
+		codeRunner.ClearBreakPoints()
+		codeRunner.ClearWatches()
+		fmt.Print("All breakpoints and watchpoints cleared\n\n")
+
+	default:
+		panic("DebugShell: Invalid clear command")
+	}
+	return true
+}
+
+// regMatchPeek regex matching and executing peek command.
+func regMatchPeek(command string, codeRunner *coderunner.CodeRunner) bool {
+	// Match regex
+	var matches []string = REG_PEEK.FindStringSubmatch(command)
+	if matches == nil {
+		return false
+	}
+
+	// Read arguments
+	var offset, length int
+	// Read offset
+	if matches[3] == "" {
+		offset = 0
+	} else {
+		fmt.Sscanf(matches[3], "%d", &offset)
+	}
+	// Read length
+	if matches[5] == "" {
+		length = 1
+	} else {
+		fmt.Sscanf(matches[5], "%d", &length)
+	}
+
+	// Execute peek
+	peekTape(codeRunner, offset, length)
+	return true
+}
+
+// printDebugMessage prints debug messages according to the return code.
+//
+// Used in run and continue commands.
+func printDebugMessage(ret coderunner.ReturnCode, codeRunning *bool) {
+	switch ret {
+	case coderunner.ReturnReachBreakPoint:
+		fmt.Print("\n\nHit breakpoint\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnReachWatch:
+		fmt.Print("\n\nWatch hit\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnReachUntil:
+		fmt.Print("\n\nUntil finished\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnReachStop:
+		fmt.Print("\n\nReach stop\n\n")
+		*codeRunning = true
+
+	case coderunner.ReturnAfterFinish:
+		fmt.Print("\n\nRunning finished\n\n")
+		*codeRunning = false
+
+	default:
+		panic("DebugShell: Unknown return code")
 	}
 }
 
@@ -361,10 +456,14 @@ func peekTape(codeRunner *coderunner.CodeRunner, offset, length int) {
 	fmt.Print("\n\n")
 }
 
+// step performs a single step and updates the code running status.
+//
+// Return message is displayed in this function.
 func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.ReturnCode) {
 	ret = codeRunner.Step()
 
 	// Check return code
+	// Step show message briefly so don't use checkReturnCode function
 	switch ret {
 	case coderunner.ReturnReachWatch:
 		fmt.Print("Watch hit\n\n")
@@ -379,7 +478,7 @@ func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.
 		*codeRunning = true
 
 	case coderunner.ReturnAfterFinish:
-		fmt.Print("\n\nRunning finished\n")
+		fmt.Print("\n\nRunning finished\n\n")
 		*codeRunning = false
 
 	case coderunner.ReturnAfterStep:
@@ -393,7 +492,9 @@ func step(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.
 }
 
 // detailedStep performs a single step and prints detailed information.
-func detailedStep(codeRunner *coderunner.CodeRunner) (ret coderunner.ReturnCode) {
+//
+// Return message is displayed in this function.
+func detailedStep(codeRunner *coderunner.CodeRunner, codeRunning *bool) (ret coderunner.ReturnCode) {
 	// Show next operator
 	codeRunner.PrintNextOperator()
 	fmt.Print("\n")
@@ -407,5 +508,14 @@ func detailedStep(codeRunner *coderunner.CodeRunner) (ret coderunner.ReturnCode)
 
 	// Print tape around
 	peekTape(codeRunner, -10, 20)
+
+	// Check return code
+	if ret == coderunner.ReturnAfterFinish {
+		fmt.Print("\n\nRunning finished\n\n")
+		*codeRunning = false
+	} else {
+		*codeRunning = true
+	}
+
 	return
 }
