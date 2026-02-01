@@ -238,6 +238,33 @@ func (cr *CodeRunner) SetStopPoint(index int) {
 	cr.stopIndex = index
 }
 
+// RemoveStopPoint removes the stop point.
+func (cr *CodeRunner) RemoveStopPoint() (message string) {
+	if cr.stopEnabled {
+		cr.stopEnabled = false
+		message = "Stop point removed\n\n"
+	} else {
+		message = "No stop point setted now\n\n"
+
+	}
+	return
+}
+
+// PrintStopPoint prints the current stop point information.
+func (cr *CodeRunner) PrintStopPoint() {
+	if cr.stopEnabled {
+		fmt.Printf("Stop point set at operator index %v\n\n", cr.stopIndex)
+	} else {
+		fmt.Print("No stop point setted now.\n\n")
+	}
+}
+
+func (cr *CodeRunner) PrintAllDebugInfo() {
+	cr.PrintBreakPoints()
+	cr.PrintWatchInfo()
+	cr.PrintStopPoint()
+}
+
 // PrintCode prints analysed code information.
 func (cr *CodeRunner) PrintAllOperators() {
 	cr.code.PrintAll()

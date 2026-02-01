@@ -34,13 +34,13 @@ const HELP_STRING string = "Execute commands:\n" +
 	"d[etailed] [times]       : Detailed step for specified times, default run until finish\n" +
 	"u[ntil]                  : Run until loop([]) finish\n" +
 	"\nDebug commands:\n" +
-	"stop <index>			  : Stop execution at specified operator index\n" +
+	"stop <index>             : Stop execution at specified operator index\n" +
 	"w[atch] <address>        : Watch memory at address\n" +
 	"b[reak] <line>           : Set breakpoint at specified line\n" +
 	"w[atch] <address>        : Watch memory at address\n" +
-	"del[ete] b|w <num>       : Delete breakpoint or watchpoint at specified number\n" +
-	"i[nfo] [b|w]             : Information of breakpoints or watching, default both\n" +
-	"clear [b|w]              : Clear all breakpoints or watchpoints, default both\n" +
+	"del[ete] s|b|w <num>     : Delete breakpoint or watchpoint at specified number\n" +
+	"i[nfo] [s|b|w]           : Information of stop point, breakpoints or watching, default all\n" +
+	"clear [s|b|w]            : Clear all breakpoints or watchpoints, default all\n" +
 	"\nMemory commands:\n" +
 	"ptr                      : Show current memory pointer\n" +
 	"p[eek] [offset [length]] : Peek memory bytes at current pointer with optional offset and length\n" +
@@ -58,9 +58,9 @@ var REG_DETAILED *regexp.Regexp = regexp.MustCompile(`^d(etailed)?( (\d+))?$`)
 var REG_STOP *regexp.Regexp = regexp.MustCompile(`^stop (\d+)$`)
 var REG_WATCH *regexp.Regexp = regexp.MustCompile(`^w(atch)? (-?\d+)$`)
 var REG_BREAK *regexp.Regexp = regexp.MustCompile(`^b(reak)? (\d+)$`)
-var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^del(ete)? (b|w) (\d+)$`)
-var REG_INFO *regexp.Regexp = regexp.MustCompile(`^i(nfo)?( (b|w))?$`)
-var REG_CLEAR *regexp.Regexp = regexp.MustCompile(`^clear( (b|w))?$`)
+var REG_DELETE *regexp.Regexp = regexp.MustCompile(`^del(ete)? (s|b|w) (\d+)$`)
+var REG_INFO *regexp.Regexp = regexp.MustCompile(`^i(nfo)?( (s|b|w))?$`)
+var REG_CLEAR *regexp.Regexp = regexp.MustCompile(`^clear( (s|b|w))?$`)
 var REG_PEEK *regexp.Regexp = regexp.MustCompile(`^p(eek)?( (-?\d+)( (\d+))?)?$`)
 
 var DEBUG_REG_FUNCTIONS = []func(string, *coderunner.CodeRunner) bool{
@@ -314,6 +314,9 @@ func regMatchDelete(command string, codeRunner *coderunner.CodeRunner) bool {
 	// Remove according to type
 	var message string
 	switch matches[2] {
+	case "s":
+		message = codeRunner.RemoveStopPoint()
+
 	case "b":
 		message = codeRunner.RemoveBreakPoint(index)
 
@@ -339,6 +342,9 @@ func regMatchInfo(command string, codeRunner *coderunner.CodeRunner) bool {
 
 	// Execute info
 	switch matches[3] {
+	case "s":
+		codeRunner.PrintStopPoint()
+
 	case "b":
 		codeRunner.PrintBreakPoints()
 
@@ -346,8 +352,7 @@ func regMatchInfo(command string, codeRunner *coderunner.CodeRunner) bool {
 		codeRunner.PrintWatchInfo()
 
 	case "":
-		codeRunner.PrintBreakPoints()
-		codeRunner.PrintWatchInfo()
+		codeRunner.PrintAllDebugInfo()
 
 	default:
 		panic("DebugShell: Invalid info command")
@@ -365,6 +370,10 @@ func regMatchClear(command string, codeRunner *coderunner.CodeRunner) bool {
 
 	// Execute clear
 	switch matches[2] {
+	case "s":
+		codeRunner.RemoveStopPoint()
+		fmt.Print("Stop point cleared\n\n")
+
 	case "b":
 		codeRunner.ClearBreakPoints()
 		fmt.Print("All breakpoints cleared\n\n")
@@ -376,7 +385,8 @@ func regMatchClear(command string, codeRunner *coderunner.CodeRunner) bool {
 	case "":
 		codeRunner.ClearBreakPoints()
 		codeRunner.ClearWatches()
-		fmt.Print("All breakpoints and watchpoints cleared\n\n")
+		codeRunner.RemoveStopPoint()
+		fmt.Print("All breakpoints, watchpoints and stop points cleared\n\n")
 
 	default:
 		panic("DebugShell: Invalid clear command")
@@ -430,7 +440,7 @@ func printDebugMessage(ret coderunner.ReturnCode, codeRunning *bool) {
 		*codeRunning = true
 
 	case coderunner.ReturnReachStop:
-		fmt.Print("\n\nReach stop\n\n")
+		fmt.Print("\n\nReach stop point\n\n")
 		*codeRunning = true
 
 	case coderunner.ReturnAfterFinish:
