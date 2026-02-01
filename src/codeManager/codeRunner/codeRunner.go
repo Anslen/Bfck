@@ -38,22 +38,23 @@ const (
 )
 
 type CodeRunner struct {
-	code             *code.Code
-	codeIndex        int // Point at next operator to execute
-	memory           *memory.Memory
-	memoryPointer    int
-	debugFlag        bool
-	breakPoint       []uint64
-	codeBreakPointed []bool
-	breakPointUsed   bool
-	watchAddress     []int
-	watchUsed        bool
-	watchChecked     bool
-	watchHit         bool
-	untilStatus      bool
-	stopEnabled      bool
-	stopIndex        int
-	untilEnabled     bool
+	code               *code.Code
+	codeIndex          int // Point at next operator to execute
+	memory             *memory.Memory
+	memoryPointer      int
+	debugFlag          bool
+	breakPoint         []uint64
+	codeBreakPointed   []bool
+	breakPointUsed     bool
+	watchAddress       []int
+	watchUsed          bool
+	watchChecked       bool
+	watchHit           bool
+	untilStatus        bool
+	stopEnabled        bool
+	stopIndex          int
+	untilEnabled       bool
+	infiniteLoopWarned bool // Only warn once to prevent flooding
 }
 
 func New(code *code.Code, debugFlag bool) (ret *CodeRunner) {
@@ -346,6 +347,19 @@ func (cr *CodeRunner) Step() (ret ReturnCode) {
 	return
 }
 
+// Reset resets the CodeRunner to the initial state.
+func (cr *CodeRunner) Reset() {
+	// Reset code index and memory
+	cr.codeIndex = 0
+	cr.memory = memory.New()
+	cr.memoryPointer = 0
+
+	// Clear debug flags
+	cr.breakPointUsed = false
+	cr.watchUsed = false
+	cr.untilEnabled = false
+}
+
 // executeOperator executes the current operator and advances the code index.
 func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	// Check stop point
@@ -402,6 +416,11 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 
 	case code.OpRightBracket:
 		if cr.memory.Peek(0) != 0 {
+			// Check infinite loop, only warn once
+			if !cr.infiniteLoopWarned && (cr.codeIndex-1 == int(auxiliary)) {
+				fmt.Printf("\nWarning: Infinite loop at operator %v\n", cr.codeIndex-1)
+				cr.infiniteLoopWarned = true
+			}
 			cr.codeIndex = int(auxiliary)
 		} else if cr.untilEnabled {
 			// Check until mode
@@ -431,19 +450,6 @@ func (cr *CodeRunner) executeOperator() (ret ReturnCode) {
 	}
 }
 
-// Reset resets the CodeRunner to the initial state.
-func (cr *CodeRunner) Reset() {
-	// Reset code index and memory
-	cr.codeIndex = 0
-	cr.memory = memory.New()
-	cr.memoryPointer = 0
-
-	// Clear debug flags
-	cr.breakPointUsed = false
-	cr.watchUsed = false
-	cr.untilEnabled = false
-}
-
 // isWatchHit checks if the current memory pointer hits any watchpoint.
 func (cr *CodeRunner) isWatchHit() bool {
 	if !cr.debugFlag {
@@ -455,9 +461,8 @@ func (cr *CodeRunner) isWatchHit() bool {
 		cr.watchChecked = true
 		var found bool
 		_, found = slices.BinarySearch(cr.watchAddress, cr.memoryPointer)
-		if found {
-			cr.watchHit = true
-		}
+		// Set watch hit status
+		cr.watchHit = found
 	}
 
 	// Return watch hit status, if watch used, flip the status and continue

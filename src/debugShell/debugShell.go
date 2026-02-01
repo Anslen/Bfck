@@ -211,6 +211,7 @@ func regMatchStep(command string, codeRunner *coderunner.CodeRunner, codeRunning
 	for i := 0; i < times; i++ {
 		var ret coderunner.ReturnCode = step(codeRunner, codeRunning)
 		if ret == coderunner.ReturnAfterFinish {
+			fmt.Print("\n\nRunning finished\n\n")
 			break
 		}
 	}
